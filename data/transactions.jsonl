@@ -1,5 +1,0 @@
-{"id": "TX-000002", "type": "expense", "date": "2024-01-12", "amount": 20000, "category": "transport", "memo": "택시비", "tags": ["taxi"]}
-{"id": "TX-000003", "type": "expense", "date": "2024-01-15", "amount": 15000, "category": "food", "memo": "점심 식사", "tags": ["meal"]}
-{"id": "TX-000004", "type": "income", "date": "2024-01-10", "amount": 3000000, "category": "salary", "memo": "1월 월급", "tags": ["income", "salary"]}
-{"id": "TX-000005", "type": "expense", "date": "2024-01-12", "amount": 20000, "category": "transport", "memo": "택시비", "tags": ["taxi"]}
-{"id": "TX-000006", "type": "expense", "date": "2024-01-15", "amount": 15000, "category": "food", "memo": "점심 식사", "tags": ["meal"]}
