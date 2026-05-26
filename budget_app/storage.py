@@ -24,6 +24,19 @@ def init_storage(data_dir: str = DEFAULT_DATA_DIR) -> None:
             # 빈 파일 생성
             with open(path, 'w', encoding='utf-8') as f:
                 pass
+    
+    # [저장 정책] 카테고리 파일이 비어있으면 기본값 자동 주입
+    cat_path = os.path.join(data_dir, FILE_NAMES["categories"])
+    
+    # 파일 크기가 0이거나 내용이 없으면 실행
+    if os.path.exists(cat_path) and os.path.getsize(cat_path) == 0:
+        default_categories = ["food", "transport", "rent", "etc"]
+        
+        # append_record 함수를 재사용하지 않고, 초기 생성 시 한 번에 쓰기
+        with open(cat_path, 'w', encoding='utf-8') as f:
+            for cat in default_categories:
+                record = {"name": cat}
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
 
 def read_stream(file_key: str, data_dir: str = DEFAULT_DATA_DIR) -> Iterator[Dict[str, Any]]:
     """
