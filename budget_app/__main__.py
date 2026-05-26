@@ -64,10 +64,13 @@ def handle_list(args) -> None:
     # 제너레이터를 리스트로 바꾸어 역순 정렬 (최신순)
     # 실제 대용량 환경에서는 파일 끝에서부터 읽는 방식을 써야 하지만, 
     # 요구사항의 단순화를 위해 메모리 정렬을 사용합니다.
+    if args.limit <= 0:
+        raise ValueError("출력 제한 건수(--limit)는 1 이상의 양수여야 합니다.")
+    
     transactions = list(TransactionService.get_stream())
     transactions.sort(key=lambda x: x.get('date', ''), reverse=True)
     
-    limit = args.limit
+    limit = args.limit # 기본값 50
     count = 0
     
     print("-" * 70)
