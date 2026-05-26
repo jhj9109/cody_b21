@@ -125,6 +125,20 @@ def handle_summary(args) -> None:
     if not args.month:
         raise ValueError("summary 명령은 --month 옵션이 필수입니다. (예: --month 2024-01)")
     
+    # 🌟 [추가] 1. Month 인자 유효성 검사
+    import re
+    from datetime import datetime
+    if not re.match(r"^\d{4}-\d{2}$", args.month):
+        raise ValueError(f"요약 월 형식이 올바르지 않습니다. YYYY-MM 형식을 맞춰주세요. (입력값: '{args.month}')")
+    try:
+        datetime.strptime(f"{args.month}-01", "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"존재하지 않는 연/월입니다. 달력을 확인해 주세요. (입력값: '{args.month}')")
+
+    # 🌟 [추가] 2. Top 인자 유효성 검사
+    if args.top <= 0:
+        raise ValueError(f"TOP 출력 건수(--top)는 1 이상의 양수여야 합니다. (입력값: {args.top})")
+    
     data = SummaryService.get_monthly_summary(args.month)
     
     if data['income'] == 0 and data['expense'] == 0:
