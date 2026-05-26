@@ -51,9 +51,9 @@ class Budget:
         if self.amount < 0:
             raise ValueError("예산(amount)은 0 이상이어야 합니다.")
         
-        if not re.match(r"^\d{4}-\d{2}$", self.date):
-            raise ValueError(f"날짜 형식이 올바르지 않습니다. YYYY-MM 형식을 맞춰주세요. (입력값: '{self.date}')")
+        if not re.match(r"^\d{4}-\d{2}$", self.month):
+            raise ValueError(f"날짜 형식이 올바르지 않습니다. YYYY-MM 형식을 맞춰주세요. (입력값: '{self.month}')")
         try:
-            datetime.strptime(self.date, "%Y-%m")
+            datetime.strptime(self.month, "%Y-%m")
         except ValueError:
-            raise ValueError(f"존재하지 않는 달입니다. 실제 달력에 맞는 달을 입력해 주세요. (입력값: '{self.date}')")
+            raise ValueError(f"존재하지 않는 달입니다. 실제 달력에 맞는 달을 입력해 주세요. (입력값: '{self.month}')")
