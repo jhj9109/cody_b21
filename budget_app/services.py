@@ -148,19 +148,23 @@ class TransactionService:
 
     @staticmethod
     def delete(tx_id: str) -> None:
+
         """원자적 교체 방식을 통해 특정 ID의 내역만 제거하고 다시 저장합니다."""
-        found = False
+        # 1. 우선 메모리 낭비 없이 해당 ID가 존재하는지 '스트리밍'으로 먼저 검사합니다.
+        found = any(tx.get('id') == tx_id for tx in read_stream('transactions'))
+        
+        if not found:
+            # ID가 없으면 디스크는 손대지도 않고 즉시 예외를 던져 종료합니다. (Early Exit)
+            raise ValueError(f"id가 '{tx_id}'인 거래 내역을 찾을 수 없습니다.")
+            
+        # 2. ID가 확실히 존재할 때만 안전하게 원자적 삭제 쓰기를 수행합니다.
         def _filter_tx():
-            nonlocal found
             for tx in read_stream('transactions'):
                 if tx.get('id') == tx_id:
-                    found = True
-                    continue  # 삭제 대상은 yield 하지 않고 건너뜀
+                    continue
                 yield tx
                 
         rewrite_records('transactions', _filter_tx())
-        if not found:
-            raise ValueError(f"id가 '{tx_id}'인 거래 내역을 찾을 수 없습니다.")
 
     @staticmethod
     def update(tx_id: str, update_data: dict) -> None:
@@ -199,12 +203,15 @@ class BudgetService:
         
         updated = False
         for bd in budgets:
-            if bd.get('month') == month:
+            if bd.get('month') == month: # 기존 예산 존재 => 업데이트 or nothing
+                if bd['amount'] == b.amount: #  값이 동일하면 => nothing
+                    return
+                # 값이 다르면 => 업데이트
                 bd['amount'] = b.amount
                 updated = True
                 break
                 
-        if not updated:
+        if not updated: # 끝에 추가
             budgets.append(b.__dict__)
             
         rewrite_records('budgets', iter(budgets))
