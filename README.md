@@ -1,12 +1,12 @@
 # 💰 콘솔 가계부 프로젝트 (Budget App)
 
-> **"작은 서비스"**란 기능이 많은 게 아니라 예외 상황에서도 데이터가 안전한 것을 말합니다. 단순한 유틸리티를 넘어 유지보수 가능한 아키텍처와 엄격한 데이터 무결성을 목표로 설계된 파일 입출력 기반의 가계부 콘솔 프로그램입니다.
+> **"작은 서비스"**란 기능이 많은 게 아니라 예외 상황에서도 데이터가 안전한 것을 말합니다. 단순한 유틸리티를 넘어 유지보수 가능한 아키텍처와 엄격한 데이터 무결성을 목표로 설계된 파일 입출력 기반의 가계부 콘솔 프로그램입니다. 본 프로젝트는 Python 기반 콘솔 가계부 구현 미션의 요구사항을 충실히 반영하여 개발되었습니다.
 
 ---
 
 ## 🏗️ 1. 아키텍처 및 계층별 책임 (Layered Architecture)
 
-본 프로젝트는 의존성이 한 방향으로만 흐르도록 설계된 계층형 구조를 따르며, 각 모듈은 **단 하나의 책임**만을 가집니다.
+본 프로젝트는 의존성이 한 방향으로만 흐르도록 설계된 계층형 구조를 따르며, 각 모듈은 **단 하나의 책임**만을 가집니다. 이를 통해 미션에서 요구하는 "유지보수 가능한 구조 설계"를 달성했습니다.
 
 * **`models.py` (Domain Model)**
     * `Transaction`, `Budget`, `Category` 등 시스템의 핵심 데이터 구조(`dataclass`)와 계약 정의
@@ -25,53 +25,92 @@
 
 ## 🛠️ 2. 영구 저장 및 데이터 관리 정책
 
-모든 데이터는 초기 실행 시 `./data` 폴더 아래 3개의 파일로 영구 저장됩니다.
+모든 데이터는 초기 실행 시 미션 요구사항에 따라 `./data` 폴더 아래 3개의 파일로 영구 저장됩니다.
 * `transactions.jsonl`: 수입/지출 거래 내역 데이터
 * `categories.jsonl`: 카테고리 마스터 데이터 (비어있을 시 `food`, `transport`, `rent`, `etc` 자동 주입)
 * `budgets.jsonl`: 월별 예산 통제 데이터
 
-### 💡 데이터 보호 및 UX 설계 특징
-1.  **스트리밍 처리:** 대용량 데이터 조회 시 파일 전체를 메모리에 적재하지 않고 제너레이터 파이프라인을 통해 한 줄씩 처리하므로 무한한 확장이 가능합니다.
-2.  **원자성(Atomicity) 강화:** 수정/삭제 시 임시 파일(`*.tmp`)에 데이터를 완벽히 쓴 후 교체하는 방식을 채택하여, 작업 도중 전원이 꺼지더라도 원본 데이터가 깨지지 않습니다.
-3.  **Graceful Shutdown:** 대화형 입력 중 유저가 `Ctrl+C`나 `Ctrl+D`를 눌러 탈출하더라도, 흉측한 스택트레이스를 뿜는 대신 친절한 인사말과 함께 정상 종료 코드(`0`)를 반환합니다.
+### 💡 주요 기술적 구현 사항 및 배움 포인트
+1.  **제너레이터 기반 스트리밍 처리 (`yield`):** 대용량 데이터 조회(`list`, `search`) 시 파일 전체를 한 번에 메모리에 적재하지 않고 제너레이터 파이프라인을 통해 한 줄씩 처리합니다. 이를 통해 데이터 크기와 무관하게 메모리 사용량을 최소한으로 유지하는 무한한 확장이 가능합니다.
+2.  **공통 관심사 분리 (데코레이터):** 예외 처리 및 로그 출력과 같은 핵심 비즈니스 로직 외의 기능들을 데코레이터(`@error_handler`)로 분리하여 코드의 가독성과 재사용성을 높였습니다.
+3.  **타입 힌트 적용:** 함수와 데이터 구조 간의 입출력 계약을 명확히 하여 개발 단계에서 오류를 사전에 방지하고 IDE의 지원을 극대화했습니다.
+4.  **원자성(Atomicity) 강화 (보너스 과제 구현):** `update`/`delete` 작업 시 임시 파일(`*.tmp`)에 데이터를 완벽히 쓴 후 `rename`(또는 `replace`)으로 원본 파일과 교체하는 방식을 채택했습니다. 작업 도중 비정상 종료되더라도 원본 데이터가 깨지는 것을 방지하는 파일 기반 트랜잭션 사고를 반영했습니다.
+5.  **Graceful Shutdown:** 대화형 입력 중 유저가 `Ctrl+C`나 `Ctrl+D`를 눌러 탈출하더라도, 흉측한 스택트레이스를 뿜는 대신 친절한 인사말과 함께 미션 요구사항에 맞게 정상 종료 코드(`0`)를 반환합니다. 오류 발생 시에는 스택트레이스 대신 원인과 해결 힌트를 출력하며 `0`이 아닌 코드로 종료됩니다.
 
 ---
 
-## 🚀 3. 단축어(Alias) 설정 및 주요 명령어 사양
+## 🚀 3. 실행 방법 및 주요 명령 예시
 
-가장 효율적인 개발 UX를 위해 `~/.aliases` 파일에 아래와 같은 단축 명령어를 구성하여 사용하고 있습니다.
+본 프로그램은 터미널 환경에서 Python 표준 라이브러리만을 사용하여 동작합니다. (Python 3.10 이상 필요)
 
+**기본 실행 구문:**
 ```bash
-# 가계부 명령어 단축어 세트 (~/.aliases)
-alias b="python3 -m budget_app"
-alias ba="python3 -m budget_app add"
-alias bl="python3 -m budget_app list"
-alias bs="python3 -m budget_app search"
-alias bm="python3 -m budget_app summary"
-alias bb="python3 -m budget_app budget"
-alias bc="python3 -m budget_app category"
-alias bu="python3 -m budget_app update"
-alias bd="python3 -m budget_app delete"
-alias bi="python3 -m budget_app import"
-alias be="python3 -m budget_app export"
-
-# [고급 단축어] bca 뒤에 오는 단어를 input() 대화창에 바로 강제 주입하는 셸 함수
-bca() { echo "$1" | python3 -m budget_app category add; }
+python -m budget_app <command> [options]
 ```
 
-### 📊 Import/Export CSV 스키마 표준 (UTF-8, 헤더 포함)
+*(참고: 효율적인 개발 UX를 위해 단축어(`alias b="python3 -m budget_app"`) 설정을 권장합니다.)*
+
+### 📌 주요 명령어 예시
+
+* **도움말 확인:**
+    ```bash
+    python -m budget_app --help
+    ```
+* **거래 추가 (대화형 진행):**
+    ```bash
+    python -m budget_app add
+    ```
+* **거래 목록 조회 (최신순):**
+    ```bash
+    python -m budget_app list --limit 5
+    ```
+* **거래 검색:**
+    ```bash
+    python -m budget_app search --from 2024-01-01 --to 2024-01-31 --category food
+    ```
+* **월별 요약 (예산 사용률 포함):**
+    ```bash
+    python -m budget_app summary --month 2024-01 --top 3
+    ```
+* **예산 설정:**
+    ```bash
+    python -m budget_app budget set --month 2024-01 --amount 500000
+    ```
+* **카테고리 추가:**
+    ```bash
+    python -m budget_app category add
+    ```
+    *(미션 요구사항에 따라, 사용 중인 카테고리의 삭제 시도는 차단되거나 대체 처리를 요구합니다.)*
+* **거래 수정 (옵션 기반 고정):**
+    ```bash
+    python -m budget_app update --id TX-000001 --amount 20000 --memo "저녁식사"
+    ```
+* **거래 삭제:**
+    ```bash
+    python -m budget_app delete --id TX-000001
+    ```
+
+---
+
+## 📊 4. Import/Export CSV 스키마 표준
+
+가져오기(`import`) 및 내보내기(`export`) 기능은 아래의 CSV 스키마를 따릅니다. (인코딩: UTF-8, 헤더 포함)
+
+* **내보내기 예시:** `python -m budget_app export --out data.csv --month 2024-01`
+* **가져오기 예시:** `python -m budget_app import --from data.csv`
+
 | column | required | 설명 |
 | :--- | :---: | :--- |
 | **date** | Y | YYYY-MM-DD (달력에 존재하는 실제 유효 날짜만 허용) |
 | **type** | Y | `income` 또는 `expense` |
 | **category** | Y | 시스템에 등록되어 있는 카테고리 |
-| **amount** | Y | 0보다 큰 양수 정수 |
+| **amount** | Y | 양수 정수 |
 | **memo** | N | 문자열 |
-| **tags** | N | 쉼표(,)로 구분된 태그 문자열 |
+| **tags** | N | 쉼표(,) 구분 문자열 |
 
 ---
 
-## 🧪 4. 시스템 신뢰성 검증 결과 (`test_result.log` 요약)
+## 🧪 5. 시스템 신뢰성 검증 결과 (`test_result.log` 요약)
 
 시스템의 견고함을 증명하기 위해 해피 케이스(정상 흐름)뿐만 아니라 섀도우 케이스(윤년 오타, 음수 예산, 불량 인자 등 예외 상황)까지 전수 검사하는 고도화된 통합 테스트(`test.py`)를 수행한 결과입니다.
 
@@ -169,4 +208,4 @@ bca() { echo "$1" | python3 -m budget_app category add; }
 ```
 
 ### 📈 검증 결론
-모든 정상 시나리오가 성공적으로 안착함을 증명했으며, 비정상 인자 및 데이터가 인입되었을 때 시스템이 지저분한 Traceback을 노출하지 않습니다. 오직 명확한 **[오류 원인]**과 **[해결 힌트]**만을 사용자에게 제공하며 프로세스가 안전하게 격리 및 종료(`Exit Code 1`)됨을 전수 확인했습니다.
+모든 정상 시나리오가 성공적으로 안착함을 증명했으며, 비정상 인자 및 데이터가 인입되었을 때 시스템이 스택트레이스를 노출하지 않습니다. 오직 명확한 **[오류 원인]**과 **[해결 힌트]**만을 사용자에게 제공하며 프로세스가 안전하게 격리 및 오류 코드(0이 아닌 값)로 종료됨을 전수 확인했습니다.
