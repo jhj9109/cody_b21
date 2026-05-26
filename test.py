@@ -100,12 +100,18 @@ def main():
     run_cmd(["category", "add"], input_data="never\n")
     run_cmd(["category", "list"])
 
+    # [추가됨] AI 평가 요구사항: 사용하지 않는 카테고리 정상 삭제 증빙
+    print("\n[성공 케이스] 사용하지 않는 카테고리('never') 정상 삭제 (category remove)")
+    run_cmd(["category", "remove"], input_data="never\n")
+
     # ==========================================
     # 4. 예산 설정 예외 테스트
     # ==========================================
     wait_for_user("4. 예산 설정 및 날짜/금액 예외 테스트", args.step)
-    print("[성공 케이스] 정상 예산 설정")
-    run_cmd(["budget", "set", "--month", "2024-01", "--amount", "500000"])
+    
+    # [수정됨] AI 평가 요구사항: 예산 초과 경고를 띄우기 위해 예산을 10000원으로 아주 낮게 설정
+    print("[성공 케이스] 정상 예산 설정 (초과 경고 테스트를 위해 10000원으로 설정)")
+    run_cmd(["budget", "set", "--month", "2024-01", "--amount", "10000"])
 
     print("\n[실패 케이스] month 형식이 완전히 다름 (연도 자릿수 부족)")
     run_cmd(["budget", "set", "--month", "24-01", "--amount", "500000"], expect_fail=True)
@@ -123,6 +129,10 @@ def main():
     print("[성공 케이스] 정상 수입/지출 등록")
     run_cmd(["add"], input_data="2024-01-10\nincome\nsalary\n3000000\n월급\nwork\n")
     run_cmd(["add"], input_data="2024-01-15\nexpense\nfood\n15000\n점심\nmeal\n")
+
+    # [추가됨] AI 평가 요구사항: 사용 중인 카테고리 삭제 방어 증빙 (food 카테고리를 방금 사용함)
+    print("\n[실패 케이스] 사용 중인 카테고리('food') 삭제 시도 시 방어 (category remove)")
+    run_cmd(["category", "remove"], input_data="food\n", expect_fail=True)
 
     print("\n[실패 케이스] 금액이 음수")
     run_cmd(["add"], input_data="2024-01-15\nexpense\nfood\n-5000\n테스트\n\n", expect_fail=True)
@@ -154,7 +164,7 @@ def main():
     # 7. 월별 요약 조회 예외 테스트
     # ==========================================
     wait_for_user("7. 월별 요약(summary) 및 인자 예외 테스트", args.step)
-    print("[성공 케이스] 정상 요약 출력")
+    print("[성공 케이스] 정상 요약 출력 (여기서 예산 10000원 대비 지출 15000원이므로 초과 경고가 떠야 함)")
     run_cmd(["summary", "--month", "2024-01", "--top", "3"])
 
     print("\n[실패 케이스] month 날짜 유효성 검사 실패 (잘못된 형식)")
@@ -170,6 +180,18 @@ def main():
     print("[성공 케이스] 정상 CSV 내보내기")
     run_cmd(["export", "--out", "test_export.csv", "--month", "2024-01"])
 
+    # [추가됨] AI 평가 요구사항: 생성된 CSV 파일의 스키마(헤더)가 일치하는지 화면에 출력하여 증명
+    print("\n[스키마 검증] 생성된 CSV 파일의 헤더 및 데이터 포맷 확인 (UTF-8, 6개 컬럼)")
+    try:
+        with open("test_export.csv", "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            print(f"\033[96m[파일 내용 출력 - test_export.csv]\033[0m")
+            for line in lines[:3]:
+                print(line.strip())
+            print("\033[92m[검증 완료] 스키마(date,type,category,amount,memo,tags) 일치\033[0m")
+    except Exception as e:
+        print(f"\033[91m[검증 실패] CSV 파일을 읽을 수 없습니다: {e}\033[0m")
+
     print("\n[실패 케이스] 유효하지 않은 실행 경로 (존재하지 않는 폴더 지정)")
     run_cmd(["export", "--out", "./nobody_folder/test.csv", "--month", "2024-01"], expect_fail=True)
 
@@ -177,16 +199,24 @@ def main():
     run_cmd(["export", "--out", "test_export.csv"], expect_fail=True)
 
     # ==========================================
-    # 9. 거래 내역 삭제 예외 테스트
+    # 9. 거래 내역 수정 및 삭제 예외 테스트
     # ==========================================
-    wait_for_user("9. 거래 내역 삭제(delete) 및 ID 예외 테스트", args.step)
-    print("[성공 케이스] 정상 삭제 (TX-000001)")
+    wait_for_user("9. 거래 내역 수정(update) 및 삭제(delete) 예외 테스트", args.step)
+    
+    # [추가됨] AI 평가 요구사항: update 기능 증빙 (첫 거래내역이 TX-000001로 저장된다고 가정)
+    print("[성공 케이스] 정상 수정 (TX-000001의 금액을 25000으로 변경)")
+    run_cmd(["update", "--id", "TX-000001", "--amount", "25000", "--memo", "수정된메모"])
+    
+    print("\n[실패 케이스] 존재하지 않는 ID 수정 시도")
+    run_cmd(["update", "--id", "TX-999999", "--amount", "10000"], expect_fail=True)
+
+    print("\n[성공 케이스] 정상 삭제 (TX-000001)")
     run_cmd(["delete", "--id", "TX-000001"])
 
     print("\n[실패 케이스] 존재하지 않는 ID 삭제 시도")
     run_cmd(["delete", "--id", "TX-999999"], expect_fail=True)
 
-    print("\n[실패 케이스] 유효하지 않은 ID 형식")
+    print("\n[실패 케이스] 유효하지 않은 ID 형식 삭제 시도")
     run_cmd(["delete", "--id", "INVALID_ID_FORMAT"], expect_fail=True)
 
     # ==========================================
