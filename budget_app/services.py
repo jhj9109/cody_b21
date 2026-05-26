@@ -30,6 +30,10 @@ def error_handler(func):
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
+        except (KeyboardInterrupt, EOFError):
+            # Ctrl+C 또는 Ctrl+D 입력 시 진입
+            print("\n\n[안내] 사용자에 의해 프로그램이 종료되었습니다. 이용해 주셔서 감사합니다.")
+            sys.exit(0)  # 사용자가 직접 종료한 것이므로 정상 종료 코드(0) 반환
         except ValueError as e:
             print(f"\n[오류] 입력값이 올바르지 않거나 규칙에 위배됩니다.")
             print(f"[원인] {e}")
