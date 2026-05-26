@@ -56,25 +56,36 @@ class CategoryService:
 
     @staticmethod
     def add(name: str) -> None:
+        cleaned_name = name.strip()
+        
+        if not cleaned_name:
+            raise ValueError("카테고리 이름은 공백이거나 비어있을 수 없습니다.")
+
         categories = CategoryService.get_all()
-        if name in categories:
-            raise ValueError(f"'{name}'(은)는 이미 존재하는 카테고리입니다.")
-        append_record('categories', {'name': name})
+        if cleaned_name in categories:
+            raise ValueError(f"'{cleaned_name}'(은)는 이미 존재하는 카테고리입니다.")
+
+        append_record('categories', {'name': cleaned_name})
 
     @staticmethod
     def remove(name: str) -> None:
+        cleaned_name = name.strip()
+        
+        if not cleaned_name:
+            raise ValueError("카테고리 이름은 공백이거나 비어있을 수 없습니다.")
+
         categories = CategoryService.get_all()
-        if name not in categories:
-            raise ValueError(f"'{name}'(은)는 존재하지 않는 카테고리입니다.")
+        if cleaned_name not in categories:
+            raise ValueError(f"'{cleaned_name}'(은)는 존재하지 않는 카테고리입니다.")
 
         # [요구사항] 삭제하려는 카테고리가 거래 내역에서 사용 중인지 검사
         for tx in read_stream('transactions'):
-            if tx.get('category') == name:
-                raise ValueError(f"'{name}' 카테고리는 기존 거래 내역에서 사용 중이므로 삭제할 수 없습니다.")
+            if tx.get('category') == cleaned_name:
+                raise ValueError(f"'{cleaned_name}' 카테고리는 기존 거래 내역에서 사용 중이므로 삭제할 수 없습니다.")
 
         def _filter_categories():
             for c in read_stream('categories'):
-                if c['name'] != name:
+                if c['name'] != cleaned_name:
                     yield c
                     
         rewrite_records('categories', _filter_categories())
