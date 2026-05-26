@@ -1,6 +1,7 @@
 import argparse
 import sys
 from typing import Dict, Any
+import heapq
 
 # 내부 모듈 임포트
 from .storage import init_storage
@@ -67,16 +68,29 @@ def handle_list(args) -> None:
     if args.limit <= 0:
         raise ValueError("출력 제한 건수(--limit)는 1 이상의 양수여야 합니다.")
     
-    transactions = list(TransactionService.get_stream())
+    limit = args.limit
+    min_heap = []
+    
+    # 1. 파일에서 한 줄씩 '스트리밍'으로 읽어옵니다. (메모리에 전체를 올리지 않음)
+    for tx in TransactionService.get_stream():
+        date = tx.get('date', '')
+        tx_id = tx.get('id', '') # 날짜가 같을 경우를 대비한 세컨더리 키
+        
+        # 정렬 기준 매칭을 위해 (날짜, ID, 거래딕셔너리) 튜플 형태로 힙에 추가
+        if len(min_heap) < limit:
+            heapq.heappush(min_heap, (date, tx_id, tx))
+        elif date > min_heap[0][0]:
+            heapq.heappushpop(min_heap, (date, tx_id, tx))
+                
+    # 2. 힙에 살아남은 limit 개의 데이터를 꺼내서 역순 정렬 (최신순 배치)
+    # 이 시점에서 transactions의 길이는 전체 데이터 수(N)가 아니라 오직 limit 수(K)입니다.
+    transactions = [item[2] for item in min_heap]
     transactions.sort(key=lambda x: x.get('date', ''), reverse=True)
     
-    limit = args.limit # 기본값 50
-    count = 0
-    
+    # 3. 출력 레이어
     print("-" * 70)
+    count = 0
     for tx in transactions:
-        if count >= limit:
-            break
         print(format_tx(tx))
         count += 1
     print("-" * 70)
