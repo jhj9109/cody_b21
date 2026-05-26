@@ -176,6 +176,50 @@ def handle_import(args) -> None:
     imported, skipped = IOService.import_csv(getattr(args, 'from'))
     print_success(f"[완료] imported={imported}, skipped={skipped}")
 
+@error_handler
+def handle_search(args) -> None:
+    # 서비스 계층에 인자 전달
+    results = TransactionService.search(
+        from_date=args.from_date,
+        to_date=args.to_date,
+        category=args.category,
+        tx_type=args.type,
+        q=args.q,
+        tag=args.tag
+    )
+    
+    count = 0
+    print(f"\n[{'검색 결과':^30}]")
+    for tx in results:
+        # 데이터 출력 (기존 list 출력 포맷과 동일하게 맞추시면 됩니다)
+        tags_str = f" [태그: {','.join(tx.get('tags', []))}]" if tx.get('tags') else ""
+        memo_str = f" - {tx.get('memo')}" if tx.get('memo') else ""
+        print(f"{tx['id']} | {tx['date']} | {tx['type']:<7} | {tx['category']:<10} | {tx['amount']}원{memo_str}{tags_str}")
+        count += 1
+        
+    if count == 0:
+        print("조건에 일치하는 내역이 없습니다.")
+    else:
+        print(f"\n총 {count}건이 검색되었습니다.")
+
+@error_handler
+def handle_update(args) -> None:
+    # 수정할 데이터만 딕셔너리로 추출 (None 값 제외)
+    update_data = {}
+    if args.date: update_data['date'] = args.date
+    if args.type: update_data['type'] = args.type
+    if args.category: update_data['category'] = args.category
+    if args.amount is not None: update_data['amount'] = args.amount
+    if args.memo is not None: update_data['memo'] = args.memo
+    if args.tags is not None:
+        update_data['tags'] = [t.strip() for t in args.tags.split(',') if t.strip()]
+
+    if not update_data:
+        raise ValueError("수정할 항목(--amount, --category 등)을 하나 이상 지정해야 합니다.")
+
+    TransactionService.update(args.id, update_data)
+    print(f"[성공] {args.id} 내역이 안전하게 수정되었습니다.")
+
 # ==========================================
 # 3. 메인 CLI 진입점
 # ==========================================
@@ -226,6 +270,26 @@ def main():
     parser_imp = subparsers.add_parser('import', help='CSV 파일에서 거래 내역을 일괄 등록합니다.')
     parser_imp.add_argument('--from', help='가져올 CSV 파일명')
 
+    # === [검색 파서] ===
+    parser_search = subparsers.add_parser('search', help='조건에 맞는 거래 내역을 검색합니다.')
+    # 파이썬 예약어 from과 겹치지 않도록 dest='from_date'를 사용합니다.
+    parser_search.add_argument('--from', dest='from_date', help='검색 시작일 (예: 2024-01-01)')
+    parser_search.add_argument('--to', dest='to_date', help='검색 종료일 (예: 2024-01-31)')
+    parser_search.add_argument('--category', help='카테고리 필터')
+    parser_search.add_argument('--type', choices=['income', 'expense'], help='수입/지출 필터')
+    parser_search.add_argument('--q', help='메모 검색어 키워드')
+    parser_search.add_argument('--tag', help='태그 검색어')
+
+    # === [수정 파서] ===
+    parser_update = subparsers.add_parser('update', help='기존 거래 내역을 수정합니다.')
+    parser_update.add_argument('--id', required=True, help='수정할 거래 내역의 ID (필수)')
+    parser_update.add_argument('--date', help='수정할 날짜 (YYYY-MM-DD)')
+    parser_update.add_argument('--type', choices=['income', 'expense'], help='변경할 타입')
+    parser_update.add_argument('--category', help='변경할 카테고리')
+    parser_update.add_argument('--amount', type=int, help='변경할 금액')
+    parser_update.add_argument('--memo', help='변경할 메모')
+    parser_update.add_argument('--tags', help='변경할 태그 (쉼표 구분)')
+
     # 파싱 및 분기
     args = parser.parse_args()
 
@@ -245,6 +309,10 @@ def main():
         handle_export(args)
     elif args.command == 'import':
         handle_import(args)
+    elif args.command == 'search':
+        handle_search(args)
+    elif args.command == 'update':
+        handle_update(args)
     else:
         parser.print_help()
         sys.exit(0)

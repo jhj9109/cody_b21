@@ -162,6 +162,34 @@ class TransactionService:
         if not found:
             raise ValueError(f"id가 '{tx_id}'인 거래 내역을 찾을 수 없습니다.")
 
+    @staticmethod
+    def update(tx_id: str, update_data: dict) -> None:
+        """존재하는 ID를 찾아 값을 수정한 뒤 원자적으로 재기록합니다."""
+        
+        records = list(read_stream('transactions'))
+        found = False
+        
+        for tx in records:
+            if tx['id'] == tx_id:
+                found = True
+                # 카테고리가 변경되었다면 유효한 카테고리인지 사전 검사
+                new_category = update_data.get('category')
+                if new_category and new_category not in CategoryService.get_all():
+                    raise ValueError(f"존재하지 않는 카테고리입니다. (입력값: '{new_category}')")
+                
+                # 값 덮어쓰기
+                tx.update(update_data)
+                
+                # 🌟 [무결성 방어] 변경된 딕셔너리로 Transaction 객체를 임시 생성해봅니다.
+                # __post_init__ 이 작동하면서 변경된 음수 금액이나 잘못된 날짜를 귀신같이 잡아냅니다!
+                Transaction(**tx) 
+                break
+                
+        if not found:
+            raise ValueError(f"존재하지 않는 ID입니다. 삭제되었거나 오타일 수 있습니다. (입력값: '{tx_id}')")
+            
+        # 안전한 임시 파일 덮어쓰기 로직 호출
+        rewrite_records('transactions', records)
 
 class BudgetService:
     @staticmethod
