@@ -39,14 +39,24 @@ def print_info(msg: str) -> None:
 
 def format_tx(tx: Transaction) -> str:
     """거래 내역을 보기 좋게 문자열로 포맷팅합니다."""
-    return f"{tx.id:<10} | {tx.date:<10} | {tx.type:<7} | {tx.category:<10} | {tx.amount:>8}원 | {tx.memo or ''}{','.join(tx.tags)}"
+
+    return " | ".join(
+        [
+            f"{tx.id:<10}",
+            f"{tx.date:<10}",
+            f"{tx.type:<7}",
+            f"{tx.category:<10}",
+            f"{tx.amount:>8}원",
+            f"{(tx.memo or '')}< {', '.join(tx.tags)} >",
+        ]
+    )
 
 
-def parse_strs(strs: str) -> list[str]:
+def parse_strs(strs: str, filter_empty=True) -> list[str]:
     result = []
     for s in strs.split(","):
         cleaned = s.strip()
-        if cleaned:
+        if not filter_empty or cleaned:
             result.append(cleaned)
     return result
 
@@ -65,8 +75,8 @@ def handle_add(args) -> None:
     t_type = input("타입(income/expense): ").strip()
     category = input("카테고리: ").strip()
     amount_str = input("금액(양수): ")
-    memo = parse_strs(input("메모(선택, 없으면 엔터): ").strip())
-    tags = parse_strs(input("태그(쉼표로 구분, 없으면 엔터): ").strip())
+    memo = input("메모(선택): ").strip() or None
+    tags = parse_strs(input("태그(선택, 쉼표로 구분): ").strip(), filter_empty=True)
 
     amount = parse_and_validate_int(amount_str, "금액")
 
@@ -83,6 +93,27 @@ def handle_add(args) -> None:
     new_id = TransactionService.add(tx)
 
     print_success(f"저장 완료 (id={new_id})")
+
+
+@error_handler
+def handle_update(args) -> None:
+
+    utx = UpdateTransactionData(
+        id=args.id,
+        type=args.type if args.type is None else args.type.strip(),
+        date=args.date if args.date is None else args.date.strip(),
+        amount=args.amount,
+        category=args.category if args.category is None else args.category.strip(),
+        memo=args.memo if args.memo is None else args.memo.strip(),
+        tags=(
+            args.tags
+            if args.tags is None
+            else parse_strs(args.tags.strip(), filter_empty=True)
+        ),
+    )
+
+    TransactionService.update(utx)
+    print_success(f"{utx.id} 내역이 안전하게 수정되었습니다.")
 
 
 @error_handler
@@ -105,10 +136,10 @@ def handle_list(args) -> None:
 
     min_heap.sort(reverse=True)
 
-    print("-" * 70)
+    print("-" * 90)
     for tx in min_heap:
         print(format_tx(tx))
-    print("-" * 70)
+    print("-" * 90)
     print_info(f"총 {len(min_heap)}건 출력됨 (제한: {limit}건)")
 
 
@@ -160,30 +191,37 @@ def handle_summary(args) -> None:
     validate_month_format(args.month)
     validate_positive_number(args.top, "TOP 출력 건수(--top)", allow_zero=False)
 
-    data = SummaryService.get_monthly_summary(args.month)
+    summary = SummaryService.get_monthly_summary(args.month)
 
-    if data["income"] == 0 and data["expense"] == 0:
+    # 예산 정보 연동
+    budget = BudgetService.get_budget(args.month)
+
+    if summary is None and budget is None:
         print_info(f"{args.month}월은 데이터 없음")
         return
 
     print(f"\n--- {args.month}월 요약 ---")
-    print(f"총 수입: {data['income']}원")
-    print(f"총 지출: {data['expense']}원")
-    print(f"잔여액: {data['balance']}원")
 
-    # 예산 정보 연동
-    budget = BudgetService.get_budget(args.month)
+    if summary:
+        print(f"총 수입: {summary['income']}원")
+        print(f"총 지출: {summary['expense']}원")
+        print(f"잔여액: {summary['balance']}원")
+    else:
+        print_info(f"{args.month}월은 수입/지출 내역 없음")
     if budget:
-        usage = (data["expense"] / budget) * 100 if budget > 0 else 0
+        usage = (
+            (summary["expense"] if summary else 0 / budget) * 100 if budget > 0 else 0
+        )
         warning = "\033[91m(초과 경고!)\033[0m" if usage > 100 else ""
         print(f"예산: {budget}원 (사용률 {usage:.1f}%) {warning}")
 
-    print(f"\n지출 TOP {args.top}")
-    sorted_cat = sorted(
-        data["category_expenses"].items(), key=lambda item: item[1], reverse=True
-    )
-    for i, (cat, amt) in enumerate(sorted_cat[: args.top], 1):
-        print(f"{i}) {cat}: {amt}원")
+    if summary:
+        print(f"\n지출 TOP {args.top}")
+        sorted_cat = sorted(
+            summary["category_expenses"].items(), key=lambda item: item[1], reverse=True
+        )
+        for i, (cat, amt) in enumerate(sorted_cat[: args.top], 1):
+            print(f"{i}) {cat}: {amt}원")
 
 
 @error_handler
@@ -212,40 +250,15 @@ def handle_search(args) -> None:
     )
 
     count = 0
-    print(f"\n[{'검색 결과':^30}]")
+    print(f"\n{('-'*40 + '검색 결과' + '-'*40):^80}")
     for tx in results:
-        tags_str = f" [태그: {','.join(tx.tags)}]" if tx.tags else ""
-        memo_str = f" - {tx.memo}" if tx.memo else ""
-        print(
-            f"{tx.id} | {tx.date} | {tx.type:<7} | {tx.category:<10} | {tx.amount}원{memo_str}{tags_str}"
-        )
+        print(format_tx(tx))
         count += 1
+    print("-" * 90)
     if count == 0:
         print("조건에 일치하는 내역이 없습니다.")
     else:
         print(f"\n총 {count}건이 검색되었습니다.")
-
-
-@error_handler
-def handle_update(args) -> None:
-    # 수정할 데이터 추출
-    update_data = {}
-    utx = UpdateTransactionData(
-        id=args.id,
-        type=args.type if args.type is None else args.type.strip(),
-        date=args.date if args.date is None else args.date.strip(),
-        amount=args.amount,
-        category=args.category if args.category is None else args.category.strip(),
-        memo=args.memo if args.memo is None else parse_strs(args.memo.strip()),
-        tags=args.tags if args.tags is None else parse_strs(args.tags.strip()),
-    )
-
-    # 🌟 [고도화 포인트] update 시에는 모든 인자가 다 들어오는 것이 아니기 때문에,
-    # CLI 레이어에서 개별 필드를 검증하기 까다롭습니다.
-    # 이 검증 책임을 뒤이어 호출될 TransactionService.update 내부의
-    # Transaction(**tx) 무결성 복원 패턴에 전임 처리하여 결합도를 깔끔하게 낮췄습니다.
-    TransactionService.update(utx)
-    print_success(f"{utx.id} 내역이 안전하게 수정되었습니다.")
 
 
 # ==========================================

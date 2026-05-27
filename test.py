@@ -112,8 +112,9 @@ def main():
     # 4. 예산 설정 예외 테스트
     # ==========================================
     wait_for_user("4. 예산 설정 및 날짜/금액 예외 테스트", args.step)
-    print("[성공 케이스] 정상 예산 설정 (초과 경고 테스트를 위해 10000원으로 설정)")
+    print("[성공 케이스] 정상 예산 설정")
     run_cmd(["budget", "set", "--month", "2024-01", "--amount", "10000"])
+    run_cmd(["budget", "set", "--month", "2024-03", "--amount", "345000"])
 
     print("\n[실패 케이스] month 형식이 완전히 다름 (연도 자릿수 부족)")
     run_cmd(
@@ -130,6 +131,9 @@ def main():
         ["budget", "set", "--month", "2024-01", "--amount", "-100000"], expect_fail=True
     )
 
+    print("\n[실패 케이스] 예산 금액을 0으로 시도")
+    run_cmd(["budget", "set", "--month", "2024-01", "--amount", "0"], expect_fail=True)
+
     # ==========================================
     # 5. 수입/지출 내역 추가 예외 테스트
     # ==========================================
@@ -137,16 +141,15 @@ def main():
     print("[성공 케이스] 정상 수입/지출 등록")
     run_cmd(["add"], input_data="2024-01-10\nincome\nsalary\n3000000\n월급\nwork\n")
     run_cmd(["add"], input_data="2024-01-15\nexpense\nfood\n15000\n점심\nmeal\n")
+    run_cmd(["add"], input_data="2024-02-03\nincome\nsalary\n3300000\n월급\nmeal\n")
+    run_cmd(["add"], input_data="2024-02-05\nexpense\nfood\n15500\n저녁\nmeal\n")
 
-    # 🌟 항목 추가 시 빈 메모 처리 검증 (정상 통과 및 None 처리 기대)
     print("\n[성공 케이스] 항목 추가 시 메모를 입력하지 않고 엔터만 쳤을 때 (빈 메모)")
     run_cmd(["add"], input_data="2024-01-16\nexpense\nfood\n7000\n\nstarbucks\n")
 
-    # 🌟 항목 추가 시 빈 태그 처리 검증 (정상 통과 및 빈 리스트 처리 기대)
     print("\n[성공 케이스] 항목 추가 시 태그를 입력하지 않고 엔터만 쳤을 때 (빈 태그)")
     run_cmd(["add"], input_data="2024-01-17\nexpense\netc\n12000\n택시비\n\n")
 
-    # 🌟 항목 추가 시 중복 태그 유입 차단 검증 (모델 레이어 예외 발생 차단 기대)
     print(
         "\n[실패 케이스] 항목 추가 시 동일한 태그가 중복되어 유입될 때 (중복 태그 예외 차단)"
     )
@@ -156,46 +159,60 @@ def main():
         expect_fail=True,
     )
 
-    # 🌟 사용 중인 카테고리 삭제 방어 증빙 (food 카테고리를 방금 사용함)
-    print(
-        "\n[실패 케이스] 사용 중인 카테고리('food') 삭제 시도 시 방어 (category remove)"
+    print("\n[실패 케이스] 금액이 음수")
+    run_cmd(
+        ["add"],
+        input_data="2024-01-15\nexpense\nfood\n-5000\n값 음수 테스트\n\n",
+        expect_fail=True,
     )
-    run_cmd(["category", "remove"], input_data="food\n", expect_fail=True)
 
     print("\n[실패 케이스] 금액이 음수")
     run_cmd(
         ["add"],
-        input_data="2024-01-15\nexpense\nfood\n-5000\n테스트\n\n",
+        input_data="2024-01-15\nexpense\nfood\n0\n값 zero 테스트\n\n",
         expect_fail=True,
     )
 
     print("\n[실패 케이스] 타입 오류 (expense/income이 아님)")
     run_cmd(
         ["add"],
-        input_data="2024-01-15\nminus\nfood\n5000\n테스트\n\n",
+        input_data="2024-01-15\nminus\nfood\n5000\ntype 오류 테스트\n\n",
         expect_fail=True,
     )
 
     print("\n[실패 케이스] 날짜 형식 오류 (YYYY/MM/DD)")
     run_cmd(
         ["add"],
-        input_data="2024/01/15\nexpense\nfood\n5000\n테스트\n\n",
+        input_data="2024/01/15\nexpense\nfood\n5000\n날짜 형식 오류 테스트\n\n",
         expect_fail=True,
     )
 
     print("\n[실패 케이스] 존재하지 않는 날짜 (윤년 고려: 2025-02-29)")
     run_cmd(
         ["add"],
-        input_data="2025-02-29\nexpense\nfood\n5000\n테스트\n\n",
+        input_data="2025-02-29\nexpense\nfood\n5000\n없는 날짜 테스트\n\n",
         expect_fail=True,
     )
 
-    print("\n[실패 케이스] 존재하지 않는 카테고리")
+    print("\n[실패 케이스] 존재하지 않는 카테고리(nowhere)")
     run_cmd(
         ["add"],
-        input_data="2024-01-15\nexpense\nbitcoin\n5000\n테스트\n\n",
+        input_data="2024-01-15\nexpense\nnowhere\n5000\n없는 카테고리 테스트\n\n",
         expect_fail=True,
     )
+
+    # ==========================================
+    # 카테고리 삭제 예외 테스트
+    # ==========================================
+    wait_for_user("카테고리 삭제 예외 테스트", args.step)
+    print("\n[실패 케이스] 사용 중인 카테고리('food') 삭제 시도 시 방어")
+    run_cmd(["category", "remove"], input_data="food\n", expect_fail=True)
+
+    print("\n[실패 케이스] 없는 카테고리('nowhere') 삭제 시도")
+    run_cmd(["category", "remove"], input_data="nowhere\n", expect_fail=True)
+
+    print("\n[실패 케이스] 빈 값으로 카테고리 삭제 시도")
+    run_cmd(["category", "remove"], input_data="    \n", expect_fail=True)
 
     # ==========================================
     # 6. 수입/지출 조회 테스트
@@ -204,23 +221,25 @@ def main():
     print("[성공 케이스] 기본 최신순 목록 조회")
     run_cmd(["list", "--limit", "5"])
 
-    print("\n[실패 케이스] limit 값이 음수이거나 이상한 값")
+    print("\n[실패 케이스] limit 값이 양수가 아님")
     run_cmd(["list", "--limit", "-5"], expect_fail=True)
+    run_cmd(["list", "--limit", "0"], expect_fail=True)
 
     # ==========================================
     # 7. 월별 요약 조회 예외 테스트
     # ==========================================
     wait_for_user("7. 월별 요약(summary) 및 인자 예외 테스트", args.step)
-    print(
-        "[성공 케이스] 정상 요약 출력 (여기서 예산 10000원 대비 지출이 있으므로 초과 경고가 떠야 함)"
-    )
+    print("[성공 케이스] 정상 요약 출력 (예산O(초과) / 예산X / 예산0(내역X))")
     run_cmd(["summary", "--month", "2024-01", "--top", "3"])
+    run_cmd(["summary", "--month", "2024-02", "--top", "3"])
+    run_cmd(["summary", "--month", "2024-03", "--top", "3"])
 
     print("\n[실패 케이스] month 날짜 유효성 검사 실패 (잘못된 형식)")
     run_cmd(["summary", "--month", "2024-13"], expect_fail=True)
 
     print("\n[실패 케이스] top 값이 음수이거나 잘못됨")
     run_cmd(["summary", "--month", "2024-01", "--top", "-1"], expect_fail=True)
+    run_cmd(["summary", "--month", "2024-01", "--top", "0"], expect_fail=True)
 
     # ==========================================
     # 8. CSV 내보내기 예외 테스트

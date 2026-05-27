@@ -47,9 +47,9 @@ def validate_positive_number(
     return True
 
 
-def validate_not_blank(value: Optional[str], field_name: str) -> None:
+def validate_not_blank(value: str, field_name: str) -> None:
     """문자열이 비어있거나 공백 문자로만 이루어져 있는지 검증합니다."""
-    if not value or not value.strip():
+    if not value.strip():
         raise ValueError(f"{field_name}은(는) 비어있거나 공백일 수 없습니다.")
     return True
 
@@ -72,21 +72,16 @@ def validate_transaction_type(t_type: str) -> None:
     return True
 
 
-def validate_not_blank_str_list(
-    strs: List[str], field_name: str, allow_empty=False
-) -> None:
+def validate_tags(tags: List[str]) -> None:
     """태그 리스트 내 공백 요소 및 중복이 존재하는지 검증합니다."""
-
-    if any(not t.strip() for t in strs):
+    if any(not tag.strip() for tag in tags):
         raise ValueError(
-            f"{field_name} 목록에 비어있는 값이나 공백 문자가 포함되어 있습니다. (입력값: {strs})"
+            f"태그 목록에 비어있는 값이나 공백 문자가 포함되어 있습니다. (입력값: {tags})"
         )
-    if field_name == "태그" and len(strs) != len(set(strs)):
+    if len(tags) != len(set(tags)):
         raise ValueError(
-            f"{field_name} 목록에 중복된 값이 존재합니다. 중복을 제거해 주세요. (입력값: {strs})"
+            f"태그 목록에 중복된 값이 존재합니다. 중복을 제거해 주세요. (입력값: {tags})"
         )
-    if not allow_empty and len(strs) == 0:
-        raise ValueError(f"{field_name} 목록이 비었습니다. (입력값: {strs})")
     return True
 
 

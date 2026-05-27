@@ -144,7 +144,6 @@ class TransactionService:
         found = False
 
         for tx_dict in records:
-            print(tx_dict)
             tx = Transaction(**tx_dict)
             if tx.id == utx.id:
                 found = True
@@ -207,8 +206,8 @@ class TransactionService:
                         to_date and tx.date > to_date,
                         category and tx.category != category,
                         t_type and tx.type != t_type,
-                        q and (q not in (tx.memo or [])),
-                        tag and tag not in tx.tags,
+                        q and (tx.memo is None or q not in tx.memo),
+                        tag and (tx.tags is None or tag not in tx.tags),
                     ]
                 )
             ):
@@ -222,7 +221,7 @@ class BudgetService:
 
         existing_bd = None
         for bd_dict in budgets:
-            bd = Budget(bd_dict)
+            bd = Budget(**bd_dict)
             if bd.month == b.month:
                 existing_bd = bd_dict
                 break
@@ -244,24 +243,27 @@ class BudgetService:
 
     @staticmethod
     def get_budget(month: str) -> Optional[int]:
-        for bd in read_stream("budgets"):
-            if bd.get("month") == month:
-                return bd.get("amount")
+        for bd_dict in read_stream("budgets"):
+            bd = Budget(**bd_dict)
+            if bd.month == month:
+                return bd.amount
         return None
 
 
 class SummaryService:
     @staticmethod
     @time_logger
-    def get_monthly_summary(month: str) -> Dict[str, Any]:
+    def get_monthly_summary(month: str) -> Optional[Dict[str, Any]]:
         """스트리밍 데이터를 활용해 특정 월의 요약 통계(수입/지출/카테고리별 합계)를 계산합니다."""
         total_income = 0
         total_expense = 0
         category_expenses = {}
+        exist_data = False
 
         for tx_dict in read_stream("transactions"):
             tx = Transaction(**tx_dict)
             if tx.date.startswith(month):
+                exist_data = True
                 if tx.type == "income":
                     total_income += tx.amount
                 elif tx.type == "expense":
@@ -269,10 +271,12 @@ class SummaryService:
                     category_expenses[tx.category] = (
                         category_expenses.get(tx.category, 0) + tx.amount
                     )
-
-        return {
-            "income": total_income,
-            "expense": total_expense,
-            "balance": total_income - total_expense,
-            "category_expenses": category_expenses,
-        }
+        if not exist_data:
+            return None
+        else:
+            return {
+                "income": total_income,
+                "expense": total_expense,
+                "balance": total_income - total_expense,
+                "category_expenses": category_expenses,
+            }
