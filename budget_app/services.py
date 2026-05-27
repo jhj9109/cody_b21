@@ -201,20 +201,26 @@ class BudgetService:
         b = Budget(month=month, amount=amount)
         budgets = list(read_stream('budgets'))
         
-        updated = False
+        existing_bd = None
         for bd in budgets:
-            if bd.get('month') == month: # 기존 예산 존재 => 업데이트 or nothing
-                if bd['amount'] == b.amount: #  값이 동일하면 => nothing
-                    return
-                # 값이 다르면 => 업데이트
-                bd['amount'] = b.amount
-                updated = True
+            if bd.get('month') == month:
+                existing_bd = bd
                 break
-                
-        if not updated: # 끝에 추가
-            budgets.append(b.__dict__)
+        
+        if existing_bd is not None:
+            # [경우의 수 A] 기존 데이터가 존재하는 상황
+            if existing_bd['amount'] == b.amount:
+                # A-1. 데이터 상태 변화가 없으므로 디스크를 전혀 건드리지 않고 즉시 리턴 (Idempotency 보장)
+                return
             
-        rewrite_records('budgets', iter(budgets))
+            # A-2. 금액이 달라졌으므로 메모리 상의 데이터를 수정 후 '원자적 전체 재기록' 수행
+            existing_bd['amount'] = b.amount
+            rewrite_records('budgets', iter(budgets))
+            
+        else:
+            # [경우의 수 B] 기존에 해당 월의 예산이 아예 존재하지 않는 상황 (신규 등록)
+            # 전체 파일을 새로 쓸 필요가 전혀 없으므로, 파일 끝에 가볍게 한 줄만 붙이는 원천 최적화 수행
+            append_record('budgets', b.__dict__)
 
     @staticmethod
     def get_budget(month: str) -> Optional[int]:

@@ -4,7 +4,7 @@ from typing import Dict, Any
 import heapq
 
 # 내부 모듈 임포트
-from .storage import init_storage
+from .storage import init_storage, set_data_dir
 from .services import (
     TransactionService, 
     CategoryService, 
@@ -238,11 +238,10 @@ def handle_update(args) -> None:
 # 3. 메인 CLI 진입점
 # ==========================================
 def main():
-    # 1. 저장소 초기화 (data 폴더 및 파일 생성)
-    init_storage()
     
-    # 2. Argument Parser 설정
+    # 1. Argument Parser 설정
     parser = argparse.ArgumentParser(description="작은 서비스: 파일 기반 가계부 콘솔 프로그램")
+    parser.add_argument('--data-dir', default='./data', help='데이터 파일이 저장될 폴더 경로 지정 (기본값: ./data)')
     subparsers = parser.add_subparsers(dest='command', help='사용할 명령어')
 
     # 'add' 명령어
@@ -306,6 +305,11 @@ def main():
 
     # 파싱 및 분기
     args = parser.parse_args()
+
+    # 2. 저장소 초기화 (data 폴더 및 파일 생성) with 경로 설정
+    if (args.data_dir):
+        set_data_dir(args.data_dir)
+    init_storage()
 
     if args.command == 'add':
         handle_add(args)
