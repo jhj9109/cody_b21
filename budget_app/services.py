@@ -1,7 +1,10 @@
 import sys
 import time
+import os
 from functools import wraps
 from typing import Iterator, List, Dict, Any, Optional
+
+from budget_app.validators import parse_and_validate_int
 
 from .models import Transaction, Budget
 from .storage import read_stream, append_record, rewrite_records
@@ -38,7 +41,10 @@ def error_handler(func):
             print(f"\n[오류] 입력값이 올바르지 않거나 규칙에 위배됩니다.")
             print(f"[원인] {e}")
             print(f"[힌트] 명령어와 옵션, 데이터 형식을 다시 확인해 주세요.")
-            sys.exit(1) # 0이 아닌 값으로 종료
+            sys.exit(1)
+        except RuntimeError as e:
+            print(str(e))
+            sys.exit(1)
         except Exception as e:
             print(f"\n[오류] 시스템 처리 중 문제가 발생했습니다.")
             print(f"[원인] {e}")
@@ -78,9 +84,9 @@ class CategoryService:
         if cleaned_name not in categories:
             raise ValueError(f"'{cleaned_name}'(은)는 존재하지 않는 카테고리입니다.")
 
-        # [요구사항] 삭제하려는 카테고리가 거래 내역에서 사용 중인지 검사
-        for tx in read_stream('transactions'):
-            if tx.get('category') == cleaned_name:
+        for tx_dict in read_stream('transactions'):
+            tx = Transaction(**tx_dict)
+            if tx.category == cleaned_name:
                 raise ValueError(f"'{cleaned_name}' 카테고리는 기존 거래 내역에서 사용 중이므로 삭제할 수 없습니다.")
 
         def _filter_categories():
@@ -96,28 +102,21 @@ class TransactionService:
     def _generate_id() -> str:
         """기존 데이터를 스캔하여 가장 높은 숫자 ID의 다음 번호를 생성합니다."""
         max_id = 0
-        for tx in read_stream('transactions'):
-            tx_id = tx.get('id', '')
-            if tx_id.startswith('TX-'):
-                try:
-                    num = int(tx_id.split('-')[1])
-                    if num > max_id:
-                        max_id = num
-                except ValueError:
-                    continue
+        for tx_dict in read_stream('transactions'):
+            tx = Transaction(**tx_dict)
+            max_id = max(max_id, tx.id_number)
         return f"TX-{max_id + 1:06d}"
 
     @staticmethod
     @time_logger
-    def add(date: str, t_type: str, category: str, amount: int, memo: Optional[str], tags: List[str]) -> str:
-        if category not in CategoryService.get_all():
-            raise ValueError(f"'{category}'는 등록되지 않은 카테고리입니다. category add 명령으로 먼저 추가하세요.")
+    def add(tx: Transaction) -> str:
+        if tx.category not in CategoryService.get_all():
+            raise ValueError(f"'{tx.category}'는 등록되지 않은 카테고리입니다. category add 명령으로 먼저 추가하세요.")
         
-        new_id = TransactionService._generate_id()
-        tx = Transaction(id=new_id, type=t_type, date=date, amount=amount, category=category, memo=memo, tags=tags)
+        tx.id = TransactionService._generate_id()
         
         append_record('transactions', tx.__dict__)
-        return new_id
+        return tx.id
 
     @staticmethod
     def get_stream() -> Iterator[Dict[str, Any]]:
@@ -136,22 +135,23 @@ class TransactionService:
         [핵심] 조건에 맞는 내역만 필터링하여 제너레이터(yield) 파이프라인으로 반환합니다.
         데이터가 수백만 건이어도 메모리 부하 없이 검색이 가능합니다.
         """
-        for tx in read_stream('transactions'):
-            if from_date and tx.get('date') < from_date: continue
-            if to_date and tx.get('date') > to_date: continue
-            if category and tx.get('category') != category: continue
-            if t_type and tx.get('type') != t_type: continue
-            if q and q not in str(tx.get('memo', '')): continue
-            if tag and tag not in tx.get('tags', []): continue
-            
-            yield tx
+        for tx_dict in read_stream('transactions'):
+            tx = Transaction(**tx_dict)
+            if not (any([
+                from_date and tx.date < from_date,
+                to_date and tx.date > to_date,
+                category and tx.category != category,
+                t_type and tx.type != t_type,
+                q and (q not in (tx.memo or [])),
+                tag and tag not in tx.tags])):
+                yield tx
 
     @staticmethod
     def delete(tx_id: str) -> None:
 
         """원자적 교체 방식을 통해 특정 ID의 내역만 제거하고 다시 저장합니다."""
         # 1. 우선 메모리 낭비 없이 해당 ID가 존재하는지 '스트리밍'으로 먼저 검사합니다.
-        found = any(tx.get('id') == tx_id for tx in read_stream('transactions'))
+        found = any(tx_dict.get("id") == tx_id for tx_dict in read_stream('transactions'))
         
         if not found:
             # ID가 없으면 디스크는 손대지도 않고 즉시 예외를 던져 종료합니다. (Early Exit)
@@ -159,17 +159,17 @@ class TransactionService:
             
         # 2. ID가 확실히 존재할 때만 안전하게 원자적 삭제 쓰기를 수행합니다.
         def _filter_tx():
-            for tx in read_stream('transactions'):
-                if tx.get('id') == tx_id:
+            for tx_id in read_stream('transactions'):
+                if tx_id.get('id') == tx_id:
                     continue
-                yield tx
+                yield tx_id
                 
         rewrite_records('transactions', _filter_tx())
 
     @staticmethod
     def update(tx_id: str, update_data: dict) -> None:
         """존재하는 ID를 찾아 값을 수정한 뒤 원자적으로 재기록합니다."""
-        
+
         records = list(read_stream('transactions'))
         found = False
         
@@ -197,24 +197,24 @@ class TransactionService:
 
 class BudgetService:
     @staticmethod
-    def set_budget(month: str, amount: int) -> None:
-        b = Budget(month=month, amount=amount)
+    def set_budget(b: Budget) -> None:
         budgets = list(read_stream('budgets'))
         
         existing_bd = None
-        for bd in budgets:
-            if bd.get('month') == month:
-                existing_bd = bd
+        for bd_dict in budgets:
+            bd = Budget(bd_dict)
+            if bd.month == b.month:
+                existing_bd = bd_dict
                 break
         
         if existing_bd is not None:
             # [경우의 수 A] 기존 데이터가 존재하는 상황
-            if existing_bd['amount'] == b.amount:
+            if existing_bd.get("amount") == b.amount:
                 # A-1. 데이터 상태 변화가 없으므로 디스크를 전혀 건드리지 않고 즉시 리턴 (Idempotency 보장)
                 return
             
             # A-2. 금액이 달라졌으므로 메모리 상의 데이터를 수정 후 '원자적 전체 재기록' 수행
-            existing_bd['amount'] = b.amount
+            existing_bd["amount"] = b.amount
             rewrite_records('budgets', iter(budgets))
             
         else:
@@ -238,15 +238,14 @@ class SummaryService:
         total_expense = 0
         category_expenses = {}
 
-        for tx in read_stream('transactions'):
-            if tx.get('date', '').startswith(month): # 'YYYY-MM' 매칭
-                amt = tx.get('amount', 0)
-                if tx.get('type') == 'income':
-                    total_income += amt
-                elif tx.get('type') == 'expense':
-                    total_expense += amt
-                    cat = tx.get('category', '기타')
-                    category_expenses[cat] = category_expenses.get(cat, 0) + amt
+        for tx_dict in read_stream('transactions'):
+            tx = Transaction(**tx_dict)
+            if tx.date.startswith(month):
+                if tx.type == 'income':
+                    total_income += tx.amount
+                elif tx.type == 'expense':
+                    total_expense += tx.amount
+                    category_expenses[tx.category] = category_expenses.get(tx.category, 0) + tx.amount
 
         return {
             "income": total_income,

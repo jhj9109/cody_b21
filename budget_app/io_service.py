@@ -27,14 +27,13 @@ class IOService:
             writer.writeheader()
             
             for tx in records:
-                tags_str = ",".join(tx.get('tags', []))
                 writer.writerow({
-                    'date': tx['date'],
-                    'type': tx['type'],
-                    'category': tx['category'],
-                    'amount': tx['amount'],
-                    'memo': tx.get('memo') or '',
-                    'tags': tags_str
+                    'date': tx.date,
+                    'type': tx.type,
+                    'category': tx.category,
+                    'amount': tx.amount,
+                    'memo': tx.memo or '',
+                    'tags': ",".join(tx.tags)
                 })
                 count += 1
                 
