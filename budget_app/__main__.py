@@ -6,15 +6,25 @@ import heapq
 # 내부 모듈 임포트
 from .storage import init_storage, set_data_dir
 from .services import (
-    TransactionService, 
-    CategoryService, 
-    BudgetService, 
+    TransactionService,
+    CategoryService,
+    BudgetService,
     SummaryService,
-    error_handler
+    error_handler,
 )
 from .io_service import IOService
-from .models import Transaction, Budget  # 데이터 클래스 엔진 임포트
-from .validators import parse_and_validate_int, validate_month_format, validate_positive_number, validate_transaction_id  # 공통 검증기 임포트
+from .models import (
+    Transaction,
+    Budget,
+    UpdateTransactionData,
+)  # 데이터 클래스 엔진 임포트
+from .validators import (
+    parse_and_validate_int,
+    validate_month_format,
+    validate_positive_number,
+    validate_transaction_id,
+)  # 공통 검증기 임포트
+
 
 # ==========================================
 # 1. 공통 헬퍼 함수
@@ -22,12 +32,15 @@ from .validators import parse_and_validate_int, validate_month_format, validate_
 def print_success(msg: str) -> None:
     print(f"\033[92m[성공]\033[0m {msg}")
 
+
 def print_info(msg: str) -> None:
     print(f"\033[94m[안내]\033[0m {msg}")
+
 
 def format_tx(tx: Transaction) -> str:
     """거래 내역을 보기 좋게 문자열로 포맷팅합니다."""
     return f"{tx.id:<10} | {tx.date:<10} | {tx.type:<7} | {tx.category:<10} | {tx.amount:>8}원 | {tx.memo or ''}{','.join(tx.tags)}"
+
 
 def parse_strs(strs: str) -> list[str]:
     result = []
@@ -37,29 +50,38 @@ def parse_strs(strs: str) -> list[str]:
             result.append(cleaned)
     return result
 
+
 # ==========================================
 # 2. 명령어 처리기 (Command Handlers)
 # ==========================================
 @error_handler
 def handle_add(args) -> None:
     """대화형으로 거래 내역을 추가합니다."""
-    
+
     print("--- 새로운 거래 내역 추가 ---")
-    
+
     # 입력 받기, 유효성 검증은 모두 끝난후에
     date = input("날짜(YYYY-MM-DD): ").strip()
     t_type = input("타입(income/expense): ").strip()
     category = input("카테고리: ").strip()
     amount_str = input("금액(양수): ")
-    memo = input("메모(선택, 없으면 엔터): ").strip() or None
+    memo = parse_strs(input("메모(선택, 없으면 엔터): ").strip())
     tags = parse_strs(input("태그(쉼표로 구분, 없으면 엔터): ").strip())
 
     amount = parse_and_validate_int(amount_str, "금액")
-    
-    tx = Transaction(id="TX-000000", type=t_type, date=date, amount=amount, category=category, memo=memo, tags=tags)
+
+    tx = Transaction(
+        id="TX-000000",
+        type=t_type,
+        date=date,
+        amount=amount,
+        category=category,
+        memo=memo,
+        tags=tags,
+    )
 
     new_id = TransactionService.add(tx)
-    
+
     print_success(f"저장 완료 (id={new_id})")
 
 
@@ -68,14 +90,14 @@ def handle_list(args) -> None:
     """최신순으로 내역을 출력합니다."""
 
     limit = args.limit
-    validate_positive_number(limit, "출력 제한 건수(--limit)", allow_zero = False)
+    validate_positive_number(limit, "출력 제한 건수(--limit)", allow_zero=False)
 
     min_heap = []
-    
+
     for tx_dict in TransactionService.get_stream():
 
         tx = Transaction(**tx_dict)
-        
+
         if len(min_heap) < limit:
             heapq.heappush(min_heap, tx)
         elif tx > min_heap[0]:
@@ -94,21 +116,21 @@ def handle_list(args) -> None:
 def handle_category(args) -> None:
     """카테고리를 관리합니다 (add, list, remove)"""
     action = args.action
-    if action == 'list':
+    if action == "list":
         categories = CategoryService.get_all()
         print("--- 카테고리 목록 ---")
         for c in categories:
             print(f"- {c}")
-    elif action == 'add':
+    elif action == "add":
         name = input("추가할 카테고리명: ").strip()
         CategoryService.add(name)
         print_success(f"카테고리 '{name}' 추가 완료")
-    elif action == 'remove':
+    elif action == "remove":
         name = input("삭제할 카테고리명: ").strip()
         CategoryService.remove(name)
         print_success(f"카테고리 '{name}' 삭제 완료")
     else:
-        pass # 도달하지 않음
+        pass  # 도달하지 않음
 
 
 @error_handler
@@ -131,14 +153,16 @@ def handle_delete(args) -> None:
 @error_handler
 def handle_summary(args) -> None:
     if not args.month:
-        raise ValueError("summary 명령은 --month 옵션이 필수입니다. (예: --month 2024-01)")
-    
+        raise ValueError(
+            "summary 명령은 --month 옵션이 필수입니다. (예: --month 2024-01)"
+        )
+
     validate_month_format(args.month)
     validate_positive_number(args.top, "TOP 출력 건수(--top)", allow_zero=False)
-    
+
     data = SummaryService.get_monthly_summary(args.month)
-    
-    if data['income'] == 0 and data['expense'] == 0:
+
+    if data["income"] == 0 and data["expense"] == 0:
         print_info(f"{args.month}월은 데이터 없음")
         return
 
@@ -150,23 +174,22 @@ def handle_summary(args) -> None:
     # 예산 정보 연동
     budget = BudgetService.get_budget(args.month)
     if budget:
-        usage = (data['expense'] / budget) * 100 if budget > 0 else 0
+        usage = (data["expense"] / budget) * 100 if budget > 0 else 0
         warning = "\033[91m(초과 경고!)\033[0m" if usage > 100 else ""
         print(f"예산: {budget}원 (사용률 {usage:.1f}%) {warning}")
 
     print(f"\n지출 TOP {args.top}")
-    sorted_cat = sorted(data['category_expenses'].items(), key=lambda item: item[1], reverse=True)
-    for i, (cat, amt) in enumerate(sorted_cat[:args.top], 1):
+    sorted_cat = sorted(
+        data["category_expenses"].items(), key=lambda item: item[1], reverse=True
+    )
+    for i, (cat, amt) in enumerate(sorted_cat[: args.top], 1):
         print(f"{i}) {cat}: {amt}원")
 
 
 @error_handler
 def handle_export(args) -> None:
     count = IOService.export_csv(
-        args.out,
-        month=args.month,
-        from_date=args.from_date,
-        to_date=args.to_date
+        args.out, month=args.month, from_date=args.from_date, to_date=args.to_date
     )
     print_success(f"[완료] {args.out} ({count} records)")
 
@@ -185,15 +208,17 @@ def handle_search(args) -> None:
         category=args.category,
         t_type=args.type,
         q=args.q,
-        tag=args.tag
+        tag=args.tag,
     )
-    
+
     count = 0
     print(f"\n[{'검색 결과':^30}]")
     for tx in results:
         tags_str = f" [태그: {','.join(tx.tags)}]" if tx.tags else ""
         memo_str = f" - {tx.memo}" if tx.memo else ""
-        print(f"{tx.id} | {tx.date} | {tx.type:<7} | {tx.category:<10} | {tx.amount}원{memo_str}{tags_str}")
+        print(
+            f"{tx.id} | {tx.date} | {tx.type:<7} | {tx.category:<10} | {tx.amount}원{memo_str}{tags_str}"
+        )
         count += 1
     if count == 0:
         print("조건에 일치하는 내역이 없습니다.")
@@ -205,112 +230,152 @@ def handle_search(args) -> None:
 def handle_update(args) -> None:
     # 수정할 데이터 추출
     update_data = {}
-    if args.date: update_data['date'] = args.date
-    if args.type: update_data['type'] = args.type
-    if args.category: update_data['category'] = args.category
-    if args.amount is not None: update_data['amount'] = args.amount
-    if args.memo is not None: update_data['memo'] = args.memo.strip() or None
-    if args.tags is not None:
-        update_data['tags'] = parse_strs(args.tags)
+    utx = UpdateTransactionData(
+        id=args.id,
+        type=args.type if args.type is None else args.type.strip(),
+        date=args.date if args.date is None else args.date.strip(),
+        amount=args.amount,
+        category=args.category if args.category is None else args.category.strip(),
+        memo=args.memo if args.memo is None else parse_strs(args.memo.strip()),
+        tags=args.tags if args.tags is None else parse_strs(args.tags.strip()),
+    )
 
-    if not update_data:
-        raise ValueError("수정할 항목(--amount, --category 등)을 최소 하나 이상 지정해야 합니다.")
-
-    # 🌟 [고도화 포인트] update 시에는 모든 인자가 다 들어오는 것이 아니기 때문에, 
-    # CLI 레이어에서 개별 필드를 검증하기 까다롭습니다. 
-    # 이 검증 책임을 뒤이어 호출될 TransactionService.update 내부의 
+    # 🌟 [고도화 포인트] update 시에는 모든 인자가 다 들어오는 것이 아니기 때문에,
+    # CLI 레이어에서 개별 필드를 검증하기 까다롭습니다.
+    # 이 검증 책임을 뒤이어 호출될 TransactionService.update 내부의
     # Transaction(**tx) 무결성 복원 패턴에 전임 처리하여 결합도를 깔끔하게 낮췄습니다.
-    TransactionService.update(args.id, update_data)
-    print_success(f"{args.id} 내역이 안전하게 수정되었습니다.")
+    TransactionService.update(utx)
+    print_success(f"{utx.id} 내역이 안전하게 수정되었습니다.")
+
 
 # ==========================================
 # 3. 메인 CLI 진입점
 # ==========================================
 
+
 def main():
-    parser = argparse.ArgumentParser(description="작은 서비스: 파일 기반 가계부 콘솔 프로그램")
-    parser.add_argument('--data-dir', default='./data', help='데이터 파일이 저장될 폴더 경로 지정 (기본값: ./data)')
-    subparsers = parser.add_subparsers(dest='command', help='사용할 명령어')
+    parser = argparse.ArgumentParser(
+        description="작은 서비스: 파일 기반 가계부 콘솔 프로그램"
+    )
+    parser.add_argument(
+        "--data-dir",
+        default="./data",
+        help="데이터 파일이 저장될 폴더 경로 지정 (기본값: ./data)",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="사용할 명령어")
 
-    subparsers.add_parser('add', help='대화형으로 새로운 거래 내역을 추가합니다.')
+    subparsers.add_parser("add", help="대화형으로 새로운 거래 내역을 추가합니다.")
 
-    parser_list = subparsers.add_parser('list', help='거래 내역 목록을 최신순으로 출력합니다.')
-    parser_list.add_argument('--limit', type=int, default=50, help='출력할 최대 건수 (기본값: 50)')
+    parser_list = subparsers.add_parser(
+        "list", help="거래 내역 목록을 최신순으로 출력합니다."
+    )
+    parser_list.add_argument(
+        "--limit", type=int, default=50, help="출력할 최대 건수 (기본값: 50)"
+    )
 
-    parser_cat = subparsers.add_parser('category', help='카테고리 관리 (add, list, remove)')
-    parser_cat.add_argument('action', choices=['add', 'list', 'remove'], help='수행할 작업')
+    parser_cat = subparsers.add_parser(
+        "category", help="카테고리 관리 (add, list, remove)"
+    )
+    parser_cat.add_argument(
+        "action", choices=["add", "list", "remove"], help="수행할 작업"
+    )
 
-    parser_budget = subparsers.add_parser('budget', help='예산 설정 (budget set --month ... --amount ...)')
-    parser_budget.add_argument('action', choices=['set'], help='수행할 작업')
-    parser_budget.add_argument('--month', required=True, help='예산 월 (YYYY-MM)')
-    parser_budget.add_argument('--amount', type=int, required=True, help='예산 금액')
+    parser_budget = subparsers.add_parser(
+        "budget", help="예산 설정 (budget set --month ... --amount ...)"
+    )
+    parser_budget.add_argument("action", choices=["set"], help="수행할 작업")
+    parser_budget.add_argument("--month", required=True, help="예산 월 (YYYY-MM)")
+    parser_budget.add_argument("--amount", type=int, required=True, help="예산 금액")
 
-    parser_del = subparsers.add_parser('delete', help='특정 거래 내역을 삭제합니다.')
-    parser_del.add_argument('--id', required=True, help='삭제할 거래 내역 ID (예: TX-000001)')
+    parser_del = subparsers.add_parser("delete", help="특정 거래 내역을 삭제합니다.")
+    parser_del.add_argument(
+        "--id", required=True, help="삭제할 거래 내역 ID (예: TX-000001)"
+    )
 
-    parser_sum = subparsers.add_parser('summary', help='월별 요약을 출력합니다.')
-    parser_sum.add_argument('--month', required=True, help='요약할 월 (YYYY-MM)')
-    parser_sum.add_argument('--top', type=int, default=3, help='카테고리별 지출 TOP N (기본값 3)')
+    parser_sum = subparsers.add_parser("summary", help="월별 요약을 출력합니다.")
+    parser_sum.add_argument("--month", required=True, help="요약할 월 (YYYY-MM)")
+    parser_sum.add_argument(
+        "--top", type=int, default=3, help="카테고리별 지출 TOP N (기본값 3)"
+    )
 
     # 'export' 명령어
-    parser_exp = subparsers.add_parser('export', help='조건에 맞는 거래 내역을 CSV로 내보냅니다.')
-    parser_exp.add_argument('--out', required=True, help='저장할 CSV 파일명')
-    parser_exp.add_argument('--month', help='내보낼 월 (YYYY-MM)')
-    parser_exp.add_argument('--from', dest='from_date', help='시작 날짜 (YYYY-MM-DD)')
-    parser_exp.add_argument('--to', dest='to_date', help='종료 날짜 (YYYY-MM-DD)')
+    parser_exp = subparsers.add_parser(
+        "export", help="조건에 맞는 거래 내역을 CSV로 내보냅니다."
+    )
+    parser_exp.add_argument("--out", required=True, help="저장할 CSV 파일명")
+    parser_exp.add_argument("--month", help="내보낼 월 (YYYY-MM)")
+    parser_exp.add_argument("--from", dest="from_date", help="시작 날짜 (YYYY-MM-DD)")
+    parser_exp.add_argument("--to", dest="to_date", help="종료 날짜 (YYYY-MM-DD)")
 
     # 'import' 명령어
-    parser_imp = subparsers.add_parser('import', help='CSV 파일에서 거래 내역을 일괄 등록합니다.')
-    parser_imp.add_argument('--from', dest='from_path', required=True, help='가져올 CSV 파일명')
+    parser_imp = subparsers.add_parser(
+        "import", help="CSV 파일에서 거래 내역을 일괄 등록합니다."
+    )
+    parser_imp.add_argument(
+        "--from", dest="from_path", required=True, help="가져올 CSV 파일명"
+    )
 
     # === [검색 파서] ===
-    parser_search = subparsers.add_parser('search', help='조건에 맞는 거래 내역을 검색합니다.')
-    parser_search.add_argument('--from', dest='from_date', help='검색 시작일 (예: 2024-01-01)')
-    parser_search.add_argument('--to', dest='to_date', help='검색 종료일 (예: 2024-01-31)')
-    parser_search.add_argument('--category', help='카테고리 필터')
-    parser_search.add_argument('--type', choices=['income', 'expense'], help='수입/지출 필터')
-    parser_search.add_argument('--q', help='메모 검색어 키워드')
-    parser_search.add_argument('--tag', help='태그 검색어')
+    parser_search = subparsers.add_parser(
+        "search", help="조건에 맞는 거래 내역을 검색합니다."
+    )
+    parser_search.add_argument(
+        "--from", dest="from_date", help="검색 시작일 (예: 2024-01-01)"
+    )
+    parser_search.add_argument(
+        "--to", dest="to_date", help="검색 종료일 (예: 2024-01-31)"
+    )
+    parser_search.add_argument("--category", help="카테고리 필터")
+    parser_search.add_argument(
+        "--type", choices=["income", "expense"], help="수입/지출 필터"
+    )
+    parser_search.add_argument("--q", help="메모 검색어 키워드")
+    parser_search.add_argument("--tag", help="태그 검색어")
 
     # === [수정 파서] ===
-    parser_update = subparsers.add_parser('update', help='기존 거래 내역을 수정합니다.')
-    parser_update.add_argument('--id', required=True, help='수정할 거래 내역의 ID (필수)')
-    parser_update.add_argument('--date', help='수정할 날짜 (YYYY-MM-DD)')
-    parser_update.add_argument('--type', choices=['income', 'expense'], help='변경할 타입')
-    parser_update.add_argument('--category', help='변경할 카테고리')
-    parser_update.add_argument('--amount', type=int, help='변경할 금액')
-    parser_update.add_argument('--memo', help='변경할 메모')
-    parser_update.add_argument('--tags', help='변경할 태그 (쉼표 구분)')
+    parser_update = subparsers.add_parser("update", help="기존 거래 내역을 수정합니다.")
+    parser_update.add_argument(
+        "--id", required=True, help="수정할 거래 내역의 ID (필수)"
+    )
+    parser_update.add_argument("--date", help="수정할 날짜 (YYYY-MM-DD)")
+    parser_update.add_argument(
+        "--type", choices=["income", "expense"], help="변경할 타입"
+    )
+    parser_update.add_argument("--category", help="변경할 카테고리")
+    parser_update.add_argument("--amount", type=int, help="변경할 금액")
+    parser_update.add_argument("--memo", help="변경할 메모")
+    parser_update.add_argument("--tags", help="변경할 태그 (쉼표 구분)")
 
     args = parser.parse_args()
 
-    if (args.data_dir):
+    if args.data_dir:
         set_data_dir(args.data_dir)
     init_storage()
 
-    if args.command == 'add':
+    if args.command == "add":
         handle_add(args)
-    elif args.command == 'list':
+    elif args.command == "list":
         handle_list(args)
-    elif args.command == 'category':
+    elif args.command == "category":
         handle_category(args)
-    elif args.command == 'budget':
+    elif args.command == "budget":
         handle_budget(args)
-    elif args.command == 'delete':
+    elif args.command == "delete":
         handle_delete(args)
-    elif args.command == 'summary':
+    elif args.command == "summary":
         handle_summary(args)
-    elif args.command == 'export':
+    elif args.command == "export":
         handle_export(args)
-    elif args.command == 'import':
+    elif args.command == "import":
         handle_import(args)
-    elif args.command == 'search':
+    elif args.command == "search":
         handle_search(args)
-    elif args.command == 'update':
+    elif args.command == "update":
         handle_update(args)
     else:
         parser.print_help()
         sys.exit(0)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
