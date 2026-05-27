@@ -31,7 +31,6 @@ def run_cmd(args_list, input_data=None, expect_fail=False):
         print(f"\033[91m{result.stderr.strip()}\033[0m")
 
     # 💡 에러 발생 시 호출한 원래 위치(test.py 내부 줄번호)를 추적
-    # inspect.stack()[1]은 run_cmd를 호출한 바로 전 단계의 프레임 정보입니다.
     frame_info = inspect.stack()[1]
     caller_file = frame_info.filename     # 호출한 파일 경로 (test.py)
     caller_line = frame_info.lineno       # 호출한 실제 줄 번호
@@ -47,7 +46,6 @@ def run_cmd(args_list, input_data=None, expect_fail=False):
 
     if is_failed:
         print(f"\033[91m{err_msg}\033[0m")
-        # 🌟 VS Code 터미널이 인식하는 표준 에러 링크 포맷 출력
         print(f"  File \"{caller_file}\", line {caller_line}")
     else:
         print("\033[92m[테스트 성공]\033[0m")
@@ -100,7 +98,6 @@ def main():
     run_cmd(["category", "add"], input_data="never\n")
     run_cmd(["category", "list"])
 
-    # [추가됨] AI 평가 요구사항: 사용하지 않는 카테고리 정상 삭제 증빙
     print("\n[성공 케이스] 사용하지 않는 카테고리('never') 정상 삭제 (category remove)")
     run_cmd(["category", "remove"], input_data="never\n")
 
@@ -108,8 +105,6 @@ def main():
     # 4. 예산 설정 예외 테스트
     # ==========================================
     wait_for_user("4. 예산 설정 및 날짜/금액 예외 테스트", args.step)
-    
-    # [수정됨] AI 평가 요구사항: 예산 초과 경고를 띄우기 위해 예산을 10000원으로 아주 낮게 설정
     print("[성공 케이스] 정상 예산 설정 (초과 경고 테스트를 위해 10000원으로 설정)")
     run_cmd(["budget", "set", "--month", "2024-01", "--amount", "10000"])
 
@@ -130,7 +125,20 @@ def main():
     run_cmd(["add"], input_data="2024-01-10\nincome\nsalary\n3000000\n월급\nwork\n")
     run_cmd(["add"], input_data="2024-01-15\nexpense\nfood\n15000\n점심\nmeal\n")
 
-    # [추가됨] AI 평가 요구사항: 사용 중인 카테고리 삭제 방어 증빙 (food 카테고리를 방금 사용함)
+    # 🌟 항목 추가 시 빈 메모 처리 검증 (정상 통과 및 None 처리 기대)
+    print("\n[성공 케이스] 항목 추가 시 메모를 입력하지 않고 엔터만 쳤을 때 (빈 메모)")
+    run_cmd(["add"], input_data="2024-01-16\nexpense\nfood\n7000\n\nstarbucks\n")
+
+    # 🌟 항목 추가 시 빈 태그 처리 검증 (정상 통과 및 빈 리스트 처리 기대)
+    print("\n[성공 케이스] 항목 추가 시 태그를 입력하지 않고 엔터만 쳤을 때 (빈 태그)")
+    run_cmd(["add"], input_data="2024-01-17\nexpense\netc\n12000\n택시비\n\n")
+
+    # 🌟 항목 추가 시 중복 태그 유입 차단 검증 (모델 레이어 예외 발생 차단 기대)
+    print("\n[실패 케이스] 항목 추가 시 동일한 태그가 중복되어 유입될 때 (중복 태그 예외 차단)")
+    run_cmd(["add"], input_data="2024-01-18\nexpense\nfood\n9000\n저녁식사\nmeal, meal\n", expect_fail=True)
+
+    
+    # 🌟 사용 중인 카테고리 삭제 방어 증빙 (food 카테고리를 방금 사용함)
     print("\n[실패 케이스] 사용 중인 카테고리('food') 삭제 시도 시 방어 (category remove)")
     run_cmd(["category", "remove"], input_data="food\n", expect_fail=True)
 
@@ -154,17 +162,16 @@ def main():
     # ==========================================
     wait_for_user("6. 거래 내역 목록 조회(list) 테스트", args.step)
     print("[성공 케이스] 기본 최신순 목록 조회")
-    run_cmd(["list", "--limit", "2"])
+    run_cmd(["list", "--limit", "5"])
 
     print("\n[실패 케이스] limit 값이 음수이거나 이상한 값")
-    # 정수 파싱 단계 혹은 로직 검사 단계에서 에러가 나는지 확인합니다.
     run_cmd(["list", "--limit", "-5"], expect_fail=True)
 
     # ==========================================
     # 7. 월별 요약 조회 예외 테스트
     # ==========================================
     wait_for_user("7. 월별 요약(summary) 및 인자 예외 테스트", args.step)
-    print("[성공 케이스] 정상 요약 출력 (여기서 예산 10000원 대비 지출 15000원이므로 초과 경고가 떠야 함)")
+    print("[성공 케이스] 정상 요약 출력 (여기서 예산 10000원 대비 지출이 있으므로 초과 경고가 떠야 함)")
     run_cmd(["summary", "--month", "2024-01", "--top", "3"])
 
     print("\n[실패 케이스] month 날짜 유효성 검사 실패 (잘못된 형식)")
@@ -180,13 +187,12 @@ def main():
     print("[성공 케이스] 정상 CSV 내보내기")
     run_cmd(["export", "--out", "test_export.csv", "--month", "2024-01"])
 
-    # [추가됨] AI 평가 요구사항: 생성된 CSV 파일의 스키마(헤더)가 일치하는지 화면에 출력하여 증명
     print("\n[스키마 검증] 생성된 CSV 파일의 헤더 및 데이터 포맷 확인 (UTF-8, 6개 컬럼)")
     try:
         with open("test_export.csv", "r", encoding="utf-8") as f:
             lines = f.readlines()
             print(f"\033[96m[파일 내용 출력 - test_export.csv]\033[0m")
-            for line in lines[:3]:
+            for line in lines[:5]:
                 print(line.strip())
             print("\033[92m[검증 완료] 스키마(date,type,category,amount,memo,tags) 일치\033[0m")
     except Exception as e:
@@ -203,9 +209,20 @@ def main():
     # ==========================================
     wait_for_user("9. 거래 내역 수정(update) 및 삭제(delete) 예외 테스트", args.step)
     
-    # [추가됨] AI 평가 요구사항: update 기능 증빙 (첫 거래내역이 TX-000001로 저장된다고 가정)
     print("[성공 케이스] 정상 수정 (TX-000001의 금액을 25000으로 변경)")
     run_cmd(["update", "--id", "TX-000001", "--amount", "25000", "--memo", "수정된메모"])
+
+    # 🌟 항목 수정 시 빈 메모 처리 검증 (정상 반영 기대)
+    print("\n[성공 케이스] 항목 수정 시 메모를 명시적 공백으로 초기화할 때 (빈 메모 수정)")
+    run_cmd(["update", "--id", "TX-000002", "--memo", ""])
+
+    # 🌟 항목 수정 시 빈 태그 처리 검증 (정상 반영 기대)
+    print("\n[성공 케이스] 항목 수정 시 태그를 명시적 공백으로 지울 때 (빈 태그 수정)")
+    run_cmd(["update", "--id", "TX-000002", "--tags", ""])
+
+    # 🌟 항목 수정 시 중복 태그 차단 검증 (모델 무결성 방어 예외 기대)
+    print("\n[실패 케이스] 항목 수정 시 인자에 중복된 태그를 문자열로 넘길 때 (중복 태그 수정 방어)")
+    run_cmd(["update", "--id", "TX-000002", "--tags", "edit, edit"], expect_fail=True)
     
     print("\n[실패 케이스] 존재하지 않는 ID 수정 시도")
     run_cmd(["update", "--id", "TX-999999", "--amount", "10000"], expect_fail=True)
@@ -231,11 +248,9 @@ def main():
 
     print("\n[실패 케이스] 구조가 깨진 잘못된 CSV 파일 처리")
     with open("invalid_test.csv", "w", encoding="utf-8") as f:
-        f.write("date,type,category,amount\n") # 필수 헤더(memo, tags 등) 누락 구조
-        f.write("2024-01-15,expense,food,abc\n") # 금액 자리에 문자열(abc) 파싱 에러 유도
+        f.write("date,type,category,amount\n")
+        f.write("2024-01-15,expense,food,abc\n")
     run_cmd(["import", "--from", "invalid_test.csv"]) 
-    # (주의: 내부 로직 설계에 따라 건너뛰기(skipped) 처리되거나 전체 에러가 날 수 있으며, 
-    # 가계부의 안정성을 체크합니다.)
 
     print("\n🎉 고도화된 시스템 예외 시나리오 무결성 테스트가 완료되었습니다!")
 

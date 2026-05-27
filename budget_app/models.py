@@ -49,7 +49,7 @@ class Transaction:
                 raise ValueError(f"태그 목록에 중복된 값이 존재합니다. 중복을 제거해 주세요. (입력값: {self.tags})")
         
         if self.memo:
-            if any(not t.strip() for t in self.memo):
+            if not self.memo.strip():
                 raise ValueError(f"메모 목록에 비어있는 값이나 공백 문자가 포함되어 있습니다. (입력값: {self.memo})")
 
 @dataclass

@@ -42,6 +42,17 @@ def parse_tags(tag_string: str) -> list[str]:
 
     return result
 
+def parse_strs(strs: str) -> list[str]:
+    result = []
+
+    for s in strs.split(","):
+        cleaned = s.strip()
+
+        if cleaned != "" and cleaned:
+            result.append(cleaned)
+
+    return result
+
 # ==========================================
 # 2. 명령어 처리기 (Command Handlers)
 # ==========================================
@@ -60,10 +71,10 @@ def handle_add(args) -> None:
         raise ValueError("금액은 숫자로 입력해야 합니다.")
         
     memo = input("메모(선택, 없으면 엔터): ").strip()
-    memo = memo if memo else None
+    memo = None if memo == "" else memo
     
     tags_str = input("태그(쉼표로 구분, 없으면 엔터): ").strip()
-    tags = parse_tags(tags_str) if tags_str else []
+    tags = parse_strs(tags_str) if tags_str else []
 
     new_id = TransactionService.add(date, t_type, category, amount, memo, tags)
     print_success(f"저장 완료 (id={new_id})")
@@ -234,9 +245,9 @@ def handle_update(args) -> None:
     if args.type: update_data['type'] = args.type
     if args.category: update_data['category'] = args.category
     if args.amount is not None: update_data['amount'] = args.amount
-    if args.memo is not None: update_data['memo'] = args.memo
+    if args.memo is not None: update_data['memo'] = args.memo.strip() or None
     if args.tags is not None:
-        update_data['tags'] = parse_tags(args.tags)
+        update_data['tags'] = parse_strs(args.tags)
 
     if not update_data:
         raise ValueError("수정할 항목(--amount, --category 등)을 하나 이상 지정해야 합니다.")
