@@ -15,6 +15,18 @@ FILE_NAMES = {
 }
 _current_data_dir = DEFAULT_DATA_DIR
 
+BACKUP_TRIGGERS = ["add", "update", "delete", "import", "budget", "category", "restore"]
+RECURRING_TRIGGERS = [
+    "add",
+    "update",
+    "delete",
+    "list",
+    "summary",
+    "search",
+    "export",
+    "budget",
+]
+
 
 def set_data_dir(path: str) -> None:
     """CLI 컨틀로러 계층에서 파싱된 경로를 저장소 엔진에 주입(Injection)하는 함수"""
@@ -26,6 +38,75 @@ def set_data_dir(path: str) -> None:
 def get_data_path(file_key: str) -> str:
     """설정된 저장 폴더 경로와 파일명을 결합하여 최종 절대/상대 경로를 반환"""
     return os.path.join(_current_data_dir, FILE_NAMES[file_key])
+
+
+def process_recurring_transactions() -> None:
+    """
+    [간소화된 로직] 반복 내역 규칙을 읽어와 매월 1일 자 기준으로 자동 기입합니다.
+    - 멱등성 보장: 이번 달에 이미 기입된 규칙은 건너뜁니다.
+    """
+    path = get_data_path("recurring")
+    if not os.path.exists(path):
+        return
+
+    rules = list(read_stream("recurring"))
+    if not rules:
+        return
+
+    # 말일(last_day)이나 현재 일자(current_day) 계산 로직 전체 삭제
+    today = datetime.date.today()
+    current_month = today.strftime("%Y-%m")
+
+    applied_rules = set()
+    max_id_num = 0
+
+    # 1. 이번 달에 이미 적용된 규칙 식별자 수집 & ID 최댓값 찾기
+    for tx in read_stream("transactions"):
+        try:
+            num = int(tx["id"].split("-")[1])
+            max_id_num = max(max_id_num, num)
+        except (ValueError, IndexError, KeyError):
+            pass
+
+        # 멱등성: 이번 달 데이터 중 시스템 태그(sys:REC-)가 있는지 확인
+        if tx.get("date", "").startswith(current_month):
+            for tag in tx.get("tags", []):
+                if tag.startswith("sys:REC-"):
+                    applied_rules.add(tag)
+
+    new_records = []
+
+    # 2. 규칙 평가 및 새 내역 생성 (조건 없이 1일 자로 고정)
+    for rule in rules:
+        rule_id = rule["id"]  # 예: REC-000001
+        system_tag = f"sys:{rule_id}:{current_month}"
+
+        # 엣지케이스 방어: 이미 이번 달에 기입된 규칙이면 패스 (멱등성 유지)
+        if system_tag in applied_rules:
+            continue
+
+        # 날짜 비교(current_day >= target_day) 삭제. 루프에 진입하면 즉시 생성
+        max_id_num += 1
+        new_tx_id = f"TX-{max_id_num:06d}"
+
+        tags = rule.get("tags", [])
+        if system_tag not in tags:
+            tags.append(system_tag)
+
+        record = {
+            "id": new_tx_id,
+            "type": rule["type"],
+            "date": f"{current_month}-01",  # 🌟 날짜를 매월 1일로 완벽히 고정
+            "amount": rule["amount"],
+            "category": rule["category"],
+            "memo": rule.get("memo", ""),
+            "tags": tags,
+        }
+        new_records.append(record)
+
+    # 3. 새로 발생한 내역이 있다면 트랜잭션 파일에 일괄 추가
+    for record in new_records:
+        append_record("transactions", record)
 
 
 def init_storage(cmd: str) -> None:
@@ -51,12 +132,16 @@ def init_storage(cmd: str) -> None:
                 record = {"name": cat}
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-    # 🌟 제안해주신 의견 반영: 초기화가 모두 끝난 직후 자동 백업 트리거
-    try:
-        if cmd not in ["backup", "restore"]:
+    if cmd in RECURRING_TRIGGERS:
+        try:
+            process_recurring_transactions()
+        except Exception as e:
+            print(f"자동백업과정에서 문제 발생:{e}")
+    if cmd in BACKUP_TRIGGERS:
+        try:
             backup_data(data_dir, is_auto=True)
-    except Exception:
-        pass  # 자동 백업 실패는 메인 로직에 영향을 주지 않도록 조용히 넘김
+        except Exception as e:
+            print(f"자동백업과정에서 문제 발생:{e}")
 
 
 def read_stream(file_key: str) -> Iterator[Dict[str, Any]]:

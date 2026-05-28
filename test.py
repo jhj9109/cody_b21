@@ -367,7 +367,78 @@ def main():
     # 0건 등록, 1건 스킵(skipped=1) 출력을 기대함
     run_cmd(["import", "--from", "invalid_test.csv"])
 
-    print("\n🎉 고도화된 시스템 예외 시나리오 무결성 테스트가 완료되었습니다!")
+    # ==========================================
+    # 11. 반복 내역 자동 기입(Recurring) 테스트
+    # ==========================================
+    wait_for_user("11. 반복 내역 자동 기입(Recurring) 테스트", args.step)
+
+    print(
+        "[설정] recurring.jsonl 파일에 테스트 규칙(매월 1일 월세 5만원)을 주입합니다."
+    )
+    import json
+
+    recurring_rule = {
+        "id": "REC-001",
+        "type": "expense",
+        "amount": 50000,
+        "category": "rent",
+        "memo": "자동기입 월세 테스트",
+        "tags": ["monthly"],
+    }
+    with open("./data/recurring.jsonl", "w", encoding="utf-8") as f:
+        f.write(json.dumps(recurring_rule, ensure_ascii=False) + "\n")
+
+    print(
+        "\n[성공 케이스] 조회 명령어(list)를 실행하여 자동 기입 시스템(RECURRING_TRIGGERS)을 트리거합니다."
+    )
+    run_cmd(["list", "--limit", "5"])
+
+    print(
+        "\n[멱등성 검증] 다시 list를 실행해도 월세가 중복 기입되지 않아야 합니다 (방금 추가된 1건만 유지)."
+    )
+    run_cmd(["list", "--limit", "5"])
+
+    # ==========================================
+    # 12. 백업(Backup) 및 복구(Restore) 테스트
+    # ==========================================
+    wait_for_user("12. 백업(Backup) 및 복구(Restore) 테스트", args.step)
+
+    print("[성공 케이스] 수동 백업 명령 실행 (지정된 폴더에 타임스탬프 zip 생성)")
+    run_cmd(["backup", "--out", "./test_backup_dir"])
+
+    print("\n[실패 케이스] 복구 파일 확장자가 zip이 아님")
+    run_cmd(["restore", "--from", "./data/transactions.jsonl"], expect_fail=True)
+
+    print("\n[실패 케이스] 존재하지 않는 백업 파일 지정")
+    run_cmd(["restore", "--from", "./ghost_backup.zip"], expect_fail=True)
+
+    print(
+        "\n[상태 변경] 복구 테스트를 위해 임의의 거래 내역(TX-000001)을 삭제하여 데이터를 변조합니다."
+    )
+    # (앞선 8번 단계에서 이미 지워졌을 수 있으므로 실패해도 무시하도록 expect_fail 처리하거나, 방금 생성된 반복 내역을 지웁니다)
+    # 반복 내역 생성으로 인해 가장 최신 ID가 발급되었을 것이므로 무난하게 'add'로 하나 넣고 지우는 시뮬레이션을 합니다.
+    run_cmd(["add"], input_data="2024-05-28\nexpense\nfood\n9999\n복구테스트용\n\n")
+
+    print(
+        "\n[성공 케이스] 시스템 자동 백업본(auto_backup.zip)으로 복구 실행 (이전 상태로 롤백)"
+    )
+    # add 직전에 만들어졌던 auto_backup.zip으로 롤백합니다.
+    run_cmd(["restore", "--from", "./data/auto_backup.zip"])
+
+    print(
+        "\n[복구 검증] 방금 추가했던 9999원짜리 '복구테스트용' 내역이 사라졌는지 확인합니다 (롤백 성공)."
+    )
+    run_cmd(["list", "--limit", "5"])
+
+    # 테스트 후 생성된 찌꺼기 폴더 정리
+    import shutil
+
+    if os.path.exists("./test_backup_dir"):
+        shutil.rmtree("./test_backup_dir")
+    if os.path.exists("./data/recurring.jsonl"):
+        os.remove("./data/recurring.jsonl")
+
+    print("\n🎉 시스템 예외 시나리오 무결성 테스트가 모두 완료되었습니다!")
 
 
 if __name__ == "__main__":
