@@ -3,35 +3,35 @@ import os
 from typing import Optional, Tuple
 
 from .services import TransactionService, CategoryService
+from .models import ExportCommandData, Transaction  # 🌟 Transaction 객체 임포트
+from .validators import parse_and_validate_int  # 🌟 안전한 정수 변환기 임포트
 
 CSV_FIELDNAMES = ["date", "type", "category", "amount", "memo", "tags"]
 
 
+def parse_strs(strs: str, filter_empty=True) -> list[str]:
+    result = []
+    for s in strs.split(","):
+        cleaned = s.strip()
+        if not filter_empty or cleaned:
+            result.append(cleaned)
+    return result
+
+
 class IOService:
     @staticmethod
-    def export_csv(
-        out_path: str,
-        month: Optional[str] = None,
-        from_date: Optional[str] = None,
-        to_date: Optional[str] = None,
-    ) -> int:
+    def export_csv(cmd_data: ExportCommandData) -> int:
         """조건에 맞는 거래 내역을 CSV 파일로 내보냅니다."""
-        if not (month or from_date or to_date):
-            raise ValueError(
-                "export 명령은 --month 또는 --from / --to 조건 중 하나 이상이 필수입니다."
-            )
 
-        # month 옵션이 들어오면 문자열 비교를 위해 from/to 날짜를 임의로 설정
-        if month:
-            from_date = f"{month}-01"
-            to_date = f"{month}-31"
+        start_date, end_date = cmd_data.effective_date_range
 
-        records = TransactionService.search(from_date=from_date, to_date=to_date)
+        records = TransactionService.search(from_date=start_date, to_date=end_date)
         count = 0
 
-        with open(out_path, "w", encoding="utf-8", newline="") as f:
+        # 요구사항 완벽 충족: UTF-8 인코딩, newline="" 처리
+        with open(cmd_data.out_path, "w", encoding="utf-8", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
-            writer.writeheader()
+            writer.writeheader()  # 필수 헤더 포함
 
             for tx in records:
                 writer.writerow(
@@ -40,8 +40,8 @@ class IOService:
                         "type": tx.type,
                         "category": tx.category,
                         "amount": tx.amount,
-                        "memo": tx.memo or "",
-                        "tags": ",".join(tx.tags),
+                        "memo": tx.memo or "",  # None일 경우 빈 문자열로 내보내기
+                        "tags": ",".join(tx.tags) if tx.tags else "",  # 쉼표로 조인
                     }
                 )
                 count += 1
@@ -63,25 +63,34 @@ class IOService:
             for row in reader:
                 try:
                     category = row["category"].strip()
-                    # 카테고리가 없으면 자동 생성하여 연결 오류 방지
                     if category not in valid_categories:
-                        CategoryService.add(category)
-                        valid_categories.append(category)
+                        raise ValueError("카테고리 없어서 스킵")
+                        # CategoryService.add(category)
+                        # valid_categories.append(category)
 
                     tags_raw = row.get("tags", "")
-                    tags = [t.strip() for t in tags_raw.split(",")] if tags_raw else []
-                    memo = row.get("memo", "").strip() or None
+                    parse_strs(tags_raw, filter_empty=True)
+                    tags = parse_strs(tags_raw, filter_empty=True) or None
 
-                    TransactionService.add(
+                    memo_raw = row.get("memo", "").strip()
+                    memo = memo_raw or None
+
+                    amount = parse_and_validate_int(row["amount"], "CSV 금액")
+
+                    tx = Transaction(
+                        id="TX-000000",  # 임시 ID 주입
+                        type=row["type"].strip(),
                         date=row["date"].strip(),
-                        t_type=row["type"].strip(),
+                        amount=amount,
                         category=category,
-                        amount=int(row["amount"]),
                         memo=memo,
                         tags=tags,
                     )
+
+                    TransactionService.add(tx)
+
                     imported_count += 1
-                except Exception:
+                except Exception as e:
                     skipped_count += 1
 
         return imported_count, skipped_count

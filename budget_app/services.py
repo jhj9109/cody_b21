@@ -192,7 +192,7 @@ class TransactionService:
         t_type: Optional[str] = None,
         q: Optional[str] = None,
         tag: Optional[str] = None,
-    ) -> Iterator[Dict[str, Any]]:
+    ) -> Iterator[Transaction]:
         """
         [핵심] 조건에 맞는 내역만 필터링하여 제너레이터(yield) 파이프라인으로 반환합니다.
         데이터가 수백만 건이어도 메모리 부하 없이 검색이 가능합니다.

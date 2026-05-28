@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Tuple
 
 from budget_app.validators import (
     validate_date_format,
@@ -147,3 +147,66 @@ class UpdateTransactionData:
         if self.tags is not None:
             update_data["tags"] = self.tags
         return update_data
+
+
+@dataclass
+class ExportCommandData:
+    """Export 명령어 입력값을 검증하고 정제하는 데이터 모델"""
+
+    out_path: str
+    month: Optional[str] = None
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+
+    def __post_init__(self):
+        # 1. 파일명 유효성 및 편의 기능
+        validate_not_blank(self.out_path, "출력 파일명(--out)")
+        # 확장자를 안 적었을 경우 자동으로 .csv를 붙여주는 소소한 헬퍼 기능
+        if not self.out_path.lower().endswith(".csv"):
+            self.out_path += ".csv"
+
+        # 2. 필수 조건 검사
+        if not (self.month or self.from_date or self.to_date):
+            raise ValueError(
+                "export 명령은 --month 또는 --from / --to 조건 중 하나 이상이 필수입니다."
+            )
+
+        # 3. 날짜 포맷 검증
+        if self.month:
+            validate_month_format(self.month)
+        if self.from_date:
+            validate_date_format(self.from_date)
+        if self.to_date:
+            validate_date_format(self.to_date)
+
+        # 4. 논리 검증: from이 to보다 미래일 수 없음
+        if self.from_date and self.to_date and self.from_date > self.to_date:
+            raise ValueError(
+                "시작 날짜(--from)는 종료 날짜(--to)보다 이전이어야 합니다."
+            )
+
+    @property
+    def effective_date_range(self) -> Tuple[Optional[str], Optional[str]]:
+        if self.month:
+            return f"{self.month}-01", f"{self.month}-31"
+        return self.from_date, self.to_date
+
+
+@dataclass
+class ImportCommandData:
+    """Import 명령어 입력값을 검증하는 데이터 모델"""
+
+    from_path: str
+
+    def __post_init__(self):
+        validate_not_blank(self.from_path, "가져올 파일명(--from)")
+
+        # 1. 확장자 방어
+        if not self.from_path.lower().endswith(".csv"):
+            raise ValueError(
+                f"CSV 파일만 가져올 수 있습니다. (입력값: '{self.from_path}')"
+            )
+
+        # 2. 파일 실제 존재 여부를 객체 생성 시점에 조기 차단(Early-catch)
+        if not os.path.exists(self.from_path):
+            raise ValueError(f"가져올 파일을 찾을 수 없습니다: {self.from_path}")

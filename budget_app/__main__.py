@@ -14,6 +14,7 @@ from .services import (
 )
 from .io_service import IOService
 from .models import (
+    ExportCommandData,
     Transaction,
     Budget,
     UpdateTransactionData,
@@ -226,10 +227,16 @@ def handle_summary(args) -> None:
 
 @error_handler
 def handle_export(args) -> None:
-    count = IOService.export_csv(
-        args.out, month=args.month, from_date=args.from_date, to_date=args.to_date
+
+    cmd_data = ExportCommandData(
+        out_path=args.out,
+        month=args.month,
+        from_date=args.from_date,
+        to_date=args.to_date,
     )
-    print_success(f"[완료] {args.out} ({count} records)")
+
+    count = IOService.export_csv(cmd_data)
+    print_success(f"[완료] {cmd_data.out_path} ({count} records)")
 
 
 @error_handler

@@ -60,6 +60,22 @@ def wait_for_user(step_name, is_step_mode):
         time.sleep(0.3)
 
 
+def print_csv_contents(file_path: str, max_lines: int = 5):
+    """
+    CSV 파일을 읽어 지정된 줄 수만큼 화면에 출력하는 헬퍼 함수입니다.
+    데이터 스키마와 인코딩이 정상적으로 적용되었는지 육안으로 검증할 때 사용합니다.
+    """
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            print(f"\033[96m[파일 내용 출력 - {file_path}]\033[0m")
+            for line in lines[:max_lines]:
+                print(line.strip())
+            print("\033[92m[검증 완료] 파일을 성공적으로 읽었습니다.\033[0m")
+    except Exception as e:
+        print(f"\033[91m[검증 실패] CSV 파일을 읽을 수 없습니다: {e}\033[0m")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="고도화된 가계부 앱 예외 처리 테스트 스크립트"
@@ -242,40 +258,9 @@ def main():
     run_cmd(["summary", "--month", "2024-01", "--top", "0"], expect_fail=True)
 
     # ==========================================
-    # 8. CSV 내보내기 예외 테스트
+    # 8. 거래 내역 수정 및 삭제 예외 테스트
     # ==========================================
-    wait_for_user("8. 데이터 내보내기(export) 및 경로 예외 테스트", args.step)
-    print("[성공 케이스] 정상 CSV 내보내기")
-    run_cmd(["export", "--out", "test_export.csv", "--month", "2024-01"])
-
-    print(
-        "\n[스키마 검증] 생성된 CSV 파일의 헤더 및 데이터 포맷 확인 (UTF-8, 6개 컬럼)"
-    )
-    try:
-        with open("test_export.csv", "r", encoding="utf-8") as f:
-            lines = f.readlines()
-            print(f"\033[96m[파일 내용 출력 - test_export.csv]\033[0m")
-            for line in lines[:5]:
-                print(line.strip())
-            print(
-                "\033[92m[검증 완료] 스키마(date,type,category,amount,memo,tags) 일치\033[0m"
-            )
-    except Exception as e:
-        print(f"\033[91m[검증 실패] CSV 파일을 읽을 수 없습니다: {e}\033[0m")
-
-    print("\n[실패 케이스] 유효하지 않은 실행 경로 (존재하지 않는 폴더 지정)")
-    run_cmd(
-        ["export", "--out", "./nobody_folder/test.csv", "--month", "2024-01"],
-        expect_fail=True,
-    )
-
-    print("\n[실패 케이스] 필수 조건(month 또는 from/to) 누락")
-    run_cmd(["export", "--out", "test_export.csv"], expect_fail=True)
-
-    # ==========================================
-    # 9. 거래 내역 수정 및 삭제 예외 테스트
-    # ==========================================
-    wait_for_user("9. 거래 내역 수정(update) 및 삭제(delete) 예외 테스트", args.step)
+    wait_for_user("8. 거래 내역 수정(update) 및 삭제(delete) 예외 테스트", args.step)
 
     print("[성공 케이스] 정상 수정 (TX-000001의 금액을 25000으로 변경)")
     run_cmd(
@@ -311,19 +296,64 @@ def main():
     run_cmd(["delete", "--id", "INVALID_ID_FORMAT"], expect_fail=True)
 
     # ==========================================
+    # 9. CSV 내보내기 예외 테스트
+    # ==========================================
+    wait_for_user("9. 데이터 내보내기(export) 및 경로 예외 테스트", args.step)
+
+    print("[성공 케이스] 정상 CSV 내보내기 (--month 단일 조건)")
+    run_cmd(["export", "--out", "test_export.csv", "--month", "2024-01"])
+
+    print("\n[성공 케이스] 정상 CSV 내보내기 (--from 및 --to 범위 조건)")
+    run_cmd(
+        [
+            "export",
+            "--out",
+            "test_export_range.csv",
+            "--from",
+            "2024-01-01",
+            "--to",
+            "2024-02-29",
+        ]
+    )
+
+    print(
+        "\n[스키마 검증] 생성된 CSV 파일의 헤더 및 데이터 포맷 확인 (UTF-8, 6개 컬럼)"
+    )
+    print_csv_contents("test_export.csv", max_lines=5)
+
+    print("\n[실패 케이스] 유효하지 않은 실행 경로 (존재하지 않는 폴더 지정)")
+    run_cmd(
+        ["export", "--out", "./nobody_folder/test.csv", "--month", "2024-01"],
+        expect_fail=True,
+    )
+
+    print("\n[실패 케이스] 필수 조건(month 또는 from/to) 누락")
+    run_cmd(["export", "--out", "test_export.csv"], expect_fail=True)
+
+    # ==========================================
     # 10. CSV 가져오기 예외 테스트
     # ==========================================
     wait_for_user("10. 데이터 가져오기(import) 및 파일 오류 테스트", args.step)
-    print("[성공 케이스] 아까 내보낸 정상 파일 가져오기")
+
+    print("[성공 케이스] 앞서 내보낸 정상 파일 가져오기")
     run_cmd(["import", "--from", "test_export.csv"])
 
     print("\n[실패 케이스] 존재하지 않는 파일 지정")
     run_cmd(["import", "--from", "ghost_file.csv"], expect_fail=True)
 
-    print("\n[실패 케이스] 구조가 깨진 잘못된 CSV 파일 처리")
+    print(
+        "\n[부분 성공/스킵 케이스] 구조가 깨진 잘못된 CSV 파일 처리 (에러 발생 행만 스킵되는지 확인)"
+    )
     with open("invalid_test.csv", "w", encoding="utf-8") as f:
-        f.write("date,type,category,amount\n")
-        f.write("2024-01-15,expense,food,abc\n")
+        # 정상적인 헤더
+        f.write("date,type,category,amount,memo,tags\n")
+        # 1행: 금액(amount) 필드에 숫자가 아닌 'abc' 입력 (스킵되어야 함)
+        f.write("2024-01-15,expense,food,abc,잘못된금액,\n")
+
+    print("\n[스키마 검증] 의도적으로 훼손한 CSV 데이터 확인")
+    print_csv_contents("invalid_test.csv", max_lines=2)
+
+    # 0건 등록, 1건 스킵(skipped=1) 출력을 기대함
     run_cmd(["import", "--from", "invalid_test.csv"])
 
     print("\n🎉 고도화된 시스템 예외 시나리오 무결성 테스트가 완료되었습니다!")
