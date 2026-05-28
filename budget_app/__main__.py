@@ -48,7 +48,7 @@ def format_tx(tx: Transaction) -> str:
             f"{tx.type:<7}",
             f"{tx.category:<10}",
             f"{tx.amount:>8}원",
-            f"{(tx.memo or '')}< {', '.join(tx.tags)} >",
+            f"{(tx.memo or '')}< {', '.join(tx.tags or [])} >",
         ]
     )
 
