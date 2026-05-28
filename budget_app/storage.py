@@ -2,6 +2,9 @@ import os
 import json
 import tempfile
 from typing import Iterator, Dict, Any
+import zipfile
+import shutil
+import datetime
 
 # 기본 저장 폴더 및 파일명 설정
 DEFAULT_DATA_DIR = "./data"
@@ -25,11 +28,11 @@ def get_data_path(file_key: str) -> str:
     return os.path.join(_current_data_dir, FILE_NAMES[file_key])
 
 
-def init_storage() -> None:
+def init_storage(cmd: str) -> None:
     """
-    저장소 디렉토리와 필수 파일(3개)이 없으면 초기화하여 생성합니다.
+    저장소 디렉토리와 필수 파일을 초기화하고,
+    마지막에 조용히 자동 백업을 수행합니다.
     """
-
     data_dir = _current_data_dir
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
@@ -37,22 +40,23 @@ def init_storage() -> None:
     for file_key in FILE_NAMES.keys():
         path = get_data_path(file_key)
         if not os.path.exists(path):
-            # 빈 파일 생성
             with open(path, "w", encoding="utf-8") as f:
                 pass
 
-    # [저장 정책] 카테고리 파일이 비어있으면 기본값 자동 주입
     cat_path = get_data_path("categories")
-
-    # 파일 크기가 0이거나 내용이 없으면 실행
     if os.path.exists(cat_path) and os.path.getsize(cat_path) == 0:
         default_categories = ["food", "transport", "rent", "etc"]
-
-        # append_record 함수를 재사용하지 않고, 초기 생성 시 한 번에 쓰기
         with open(cat_path, "w", encoding="utf-8") as f:
             for cat in default_categories:
                 record = {"name": cat}
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    # 🌟 제안해주신 의견 반영: 초기화가 모두 끝난 직후 자동 백업 트리거
+    try:
+        if cmd not in ["backup", "restore"]:
+            backup_data(data_dir, is_auto=True)
+    except Exception:
+        pass  # 자동 백업 실패는 메인 로직에 영향을 주지 않도록 조용히 넘김
 
 
 def read_stream(file_key: str) -> Iterator[Dict[str, Any]]:
@@ -106,3 +110,53 @@ def rewrite_records(file_key: str, records: Iterator[Dict[str, Any]]) -> None:
             f"[상세 원인]: {str(e)}\n"
             f"[힌트]: 현재 저장 디렉토리의 쓰기 권한이 유효한지, 혹은 디스크 용량이 가득 차지 않았는지 확인해 주세요."
         ) from e
+
+
+def backup_data(out_dir: str, is_auto: bool = False) -> str:
+    """데이터 파일 3개를 ZIP으로 압축하여 백업합니다."""
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    if is_auto:
+        filename = "auto_backup.zip"
+    else:
+        now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"budget_backup_{now}.zip"
+
+    final_path = os.path.join(out_dir, filename)
+    temp_fd, temp_path = tempfile.mkstemp(suffix=".zip")
+    os.close(temp_fd)
+
+    try:
+        with zipfile.ZipFile(temp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file_key, real_filename in FILE_NAMES.items():
+                source_path = get_data_path(file_key)
+                if os.path.exists(source_path):
+                    zf.write(source_path, arcname=real_filename)
+        os.replace(temp_path, final_path)
+        return final_path
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise RuntimeError(f"백업 생성 중 디스크 오류가 발생했습니다: {e}")
+
+
+def restore_data(from_path: str) -> None:
+    """지정된 백업(ZIP) 파일에서 데이터를 복구합니다."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        with zipfile.ZipFile(from_path, "r") as zf:
+            zf.extractall(temp_dir)
+
+        for file_key, filename in FILE_NAMES.items():
+            extracted_path = os.path.join(temp_dir, filename)
+            if not os.path.exists(extracted_path):
+                raise ValueError(f"손상된 백업입니다. 필수 데이터 '{filename}' 누락.")
+
+        for file_key, filename in FILE_NAMES.items():
+            extracted_path = os.path.join(temp_dir, filename)
+            target_path = get_data_path(file_key)
+            os.replace(extracted_path, target_path)
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)

@@ -1,3 +1,4 @@
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -210,3 +211,31 @@ class ImportCommandData:
         # 2. 파일 실제 존재 여부를 객체 생성 시점에 조기 차단(Early-catch)
         if not os.path.exists(self.from_path):
             raise ValueError(f"가져올 파일을 찾을 수 없습니다: {self.from_path}")
+
+
+@dataclass
+class BackupCommandData:
+    """Backup 명령어 입력값을 검증하는 데이터 모델"""
+
+    out_path: str
+
+    def __post_init__(self):
+        validate_not_blank(self.out_path, "백업 대상 폴더(--out)")
+
+
+@dataclass
+class RestoreCommandData:
+    """Restore 명령어 입력값을 검증하는 데이터 모델"""
+
+    from_path: str
+
+    def __post_init__(self):
+        validate_not_blank(self.from_path, "가져올 백업 파일명(--from)")
+
+        if not self.from_path.lower().endswith(".zip"):
+            raise ValueError(
+                f"복구는 ZIP(.zip) 형태의 백업 파일만 지원합니다. (입력값: '{self.from_path}')"
+            )
+
+        if not os.path.exists(self.from_path):
+            raise ValueError(f"가져올 백업 파일을 찾을 수 없습니다: {self.from_path}")

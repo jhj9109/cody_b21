@@ -2,9 +2,22 @@ import subprocess
 import argparse
 import time
 import os
-import shutil
 import sys
 import inspect
+
+target_files = [
+    "./data/transactions.jsonl",
+    "./data/categories.jsonl",
+    "./data/budgets.jsonl",
+]
+
+
+def clear_files(file_path: str = "./data"):
+
+    for file_path in target_files:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    print(f"테스트용 데이터 초기화 완료: {file_path}")
 
 
 def run_cmd(args_list, input_data=None, expect_fail=False):
@@ -93,9 +106,7 @@ def main():
     # 1. 기존 파일 무조건 지우고 시작 (환경 초기화)
     # ==========================================
     wait_for_user("1. 테스트 환경 초기화", args.step)
-    if os.path.exists("./data"):
-        shutil.rmtree("./data")
-        print("기존 './data' 폴더를 완전히 삭제했습니다. (데이터 오염 방지)")
+    clear_files()
     if os.path.exists("test_export.csv"):
         os.remove("test_export.csv")
     if os.path.exists("invalid_test.csv"):

@@ -1,10 +1,9 @@
 import argparse
 import sys
-from typing import Dict, Any
 import heapq
 
 # 내부 모듈 임포트
-from .storage import init_storage, set_data_dir
+from .storage import init_storage, set_data_dir, backup_data, restore_data
 from .services import (
     TransactionService,
     CategoryService,
@@ -25,6 +24,8 @@ from .validators import (
     validate_positive_number,
     validate_transaction_id,
 )  # 공통 검증기 임포트
+
+from .models import BackupCommandData, RestoreCommandData
 
 
 # ==========================================
@@ -268,6 +269,20 @@ def handle_search(args) -> None:
         print(f"\n총 {count}건이 검색되었습니다.")
 
 
+@error_handler
+def handle_backup(args) -> None:
+    cmd_data = BackupCommandData(out_path=args.out)
+    final_path = backup_data(cmd_data.out_path, is_auto=False)  # storage 함수 호출
+    print_success(f"[백업 완료] 안전하게 저장되었습니다: {final_path}")
+
+
+@error_handler
+def handle_restore(args) -> None:
+    cmd_data = RestoreCommandData(from_path=args.from_path)
+    restore_data(cmd_data.from_path)  # storage 함수 호출
+    print_success(f"[복구 완료] {cmd_data.from_path} 파일로부터 데이터를 덮어썼습니다.")
+
+
 # ==========================================
 # 3. 메인 CLI 진입점
 # ==========================================
@@ -318,7 +333,6 @@ def main():
         "--top", type=int, default=3, help="카테고리별 지출 TOP N (기본값 3)"
     )
 
-    # 'export' 명령어
     parser_exp = subparsers.add_parser(
         "export", help="조건에 맞는 거래 내역을 CSV로 내보냅니다."
     )
@@ -327,7 +341,6 @@ def main():
     parser_exp.add_argument("--from", dest="from_date", help="시작 날짜 (YYYY-MM-DD)")
     parser_exp.add_argument("--to", dest="to_date", help="종료 날짜 (YYYY-MM-DD)")
 
-    # 'import' 명령어
     parser_imp = subparsers.add_parser(
         "import", help="CSV 파일에서 거래 내역을 일괄 등록합니다."
     )
@@ -335,7 +348,6 @@ def main():
         "--from", dest="from_path", required=True, help="가져올 CSV 파일명"
     )
 
-    # === [검색 파서] ===
     parser_search = subparsers.add_parser(
         "search", help="조건에 맞는 거래 내역을 검색합니다."
     )
@@ -352,7 +364,6 @@ def main():
     parser_search.add_argument("--q", help="메모 검색어 키워드")
     parser_search.add_argument("--tag", help="태그 검색어")
 
-    # === [수정 파서] ===
     parser_update = subparsers.add_parser("update", help="기존 거래 내역을 수정합니다.")
     parser_update.add_argument(
         "--id", required=True, help="수정할 거래 내역의 ID (필수)"
@@ -366,11 +377,25 @@ def main():
     parser_update.add_argument("--memo", help="변경할 메모")
     parser_update.add_argument("--tags", help="변경할 태그 (쉼표 구분)")
 
+    parser_backup = subparsers.add_parser(
+        "backup", help="현재 가계부 데이터를 ZIP 파일로 안전하게 백업합니다."
+    )
+    parser_backup.add_argument(
+        "--out", required=True, help="백업 파일이 저장될 폴더 경로 (예: ./backup_dir)"
+    )
+
+    parser_restore = subparsers.add_parser(
+        "restore", help="ZIP 백업 파일로부터 가계부 데이터를 복구합니다."
+    )
+    parser_restore.add_argument(
+        "--from", dest="from_path", required=True, help="복구할 백업 파일(.zip) 경로"
+    )
+
     args = parser.parse_args()
 
     if args.data_dir:
         set_data_dir(args.data_dir)
-    init_storage()
+    init_storage(args.command)
 
     if args.command == "add":
         handle_add(args)
@@ -392,6 +417,10 @@ def main():
         handle_search(args)
     elif args.command == "update":
         handle_update(args)
+    elif args.command == "backup":
+        handle_backup(args)
+    elif args.command == "restore":
+        handle_restore(args)
     else:
         parser.print_help()
         sys.exit(0)
