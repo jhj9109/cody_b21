@@ -12,6 +12,8 @@ FILE_NAMES = {
     "transactions": "transactions.jsonl",
     "categories": "categories.jsonl",
     "budgets": "budgets.jsonl",
+    "recurring": "recurring.jsonl",
+}
 }
 _current_data_dir = DEFAULT_DATA_DIR
 
