@@ -6,6 +6,8 @@ import zipfile
 import shutil
 import datetime
 
+from budget_app.models import Transaction
+
 # 기본 저장 폴더 및 파일명 설정
 DEFAULT_DATA_DIR = "./data"
 FILE_NAMES = {
@@ -14,10 +16,18 @@ FILE_NAMES = {
     "budgets": "budgets.jsonl",
     "recurring": "recurring.jsonl",
 }
+DEFAULT_CATEGORIES = ["food", "transport", "rent", "etc"]
+DEFAULT_RECURRING_RULE = {
+    "id": "REC-001",
+    "type": "expense",
+    "amount": 50000,
+    "category": "rent",
+    "memo": "자동기입 월세 테스트",
+    "tags": ["monthly"],
 }
 _current_data_dir = DEFAULT_DATA_DIR
 
-BACKUP_TRIGGERS = ["add", "update", "delete", "import", "budget", "category", "restore"]
+BACKUP_TRIGGERS = ["add", "update", "delete", "import", "budget", "category"]
 RECURRING_TRIGGERS = [
     "add",
     "update",
@@ -63,16 +73,17 @@ def process_recurring_transactions() -> None:
     max_id_num = 0
 
     # 1. 이번 달에 이미 적용된 규칙 식별자 수집 & ID 최댓값 찾기
-    for tx in read_stream("transactions"):
+    for tx_dict in read_stream("transactions"):
+        tx = Transaction(**tx_dict)
         try:
-            num = int(tx["id"].split("-")[1])
+            num = int(tx.id.split("-")[1])
             max_id_num = max(max_id_num, num)
         except (ValueError, IndexError, KeyError):
             pass
 
         # 멱등성: 이번 달 데이터 중 시스템 태그(sys:REC-)가 있는지 확인
-        if tx.get("date", "").startswith(current_month):
-            for tag in tx.get("tags", []):
+        if tx.date.startswith(current_month) and tx.tags:
+            for tag in tx.tags:
                 if tag.startswith("sys:REC-"):
                     applied_rules.add(tag)
 
@@ -111,12 +122,7 @@ def process_recurring_transactions() -> None:
         append_record("transactions", record)
 
 
-def init_storage(cmd: str) -> None:
-    """
-    저장소 디렉토리와 필수 파일을 초기화하고,
-    마지막에 조용히 자동 백업을 수행합니다.
-    """
-    data_dir = _current_data_dir
+def make_base_files(data_dir: str) -> None:
     if not os.path.exists(data_dir):
         os.makedirs(data_dir)
 
@@ -126,24 +132,46 @@ def init_storage(cmd: str) -> None:
             with open(path, "w", encoding="utf-8") as f:
                 pass
 
-    cat_path = get_data_path("categories")
-    if os.path.exists(cat_path) and os.path.getsize(cat_path) == 0:
-        default_categories = ["food", "transport", "rent", "etc"]
-        with open(cat_path, "w", encoding="utf-8") as f:
-            for cat in default_categories:
+
+def set_default_category(path: str, categories: list[str] = DEFAULT_CATEGORIES) -> None:
+    if os.path.exists(path) and os.path.getsize(path) == 0:
+        with open(path, "w", encoding="utf-8") as f:
+            for cat in categories:
                 record = {"name": cat}
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
+
+def set_default_recurring_rule(
+    path: str, recurring_rule: Dict[str, Any] = DEFAULT_RECURRING_RULE
+):
+    if os.path.exists(path) and os.path.getsize(path) == 0:
+        with open("./data/recurring.jsonl", "w", encoding="utf-8") as f:
+            f.write(json.dumps(recurring_rule, ensure_ascii=False) + "\n")
+
+
+def run_auto_process(cmd: str, data_dir: str) -> None:
     if cmd in RECURRING_TRIGGERS:
         try:
             process_recurring_transactions()
         except Exception as e:
-            print(f"자동백업과정에서 문제 발생:{e}")
+            print(f"자동작업 문제 발생:{e}")
     if cmd in BACKUP_TRIGGERS:
         try:
             backup_data(data_dir, is_auto=True)
         except Exception as e:
             print(f"자동백업과정에서 문제 발생:{e}")
+
+
+def init_storage(cmd: str) -> None:
+    """
+    저장소 디렉토리와 필수 파일을 초기화하고,
+    마지막에 조용히 자동 백업을 수행합니다.
+    """
+    data_dir = _current_data_dir
+    make_base_files(data_dir)
+    set_default_category(get_data_path("categories"))
+    set_default_recurring_rule(get_data_path("recurring"))
+    run_auto_process(cmd, data_dir)
 
 
 def read_stream(file_key: str) -> Iterator[Dict[str, Any]]:

@@ -373,22 +373,6 @@ def main():
     wait_for_user("11. 반복 내역 자동 기입(Recurring) 테스트", args.step)
 
     print(
-        "[설정] recurring.jsonl 파일에 테스트 규칙(매월 1일 월세 5만원)을 주입합니다."
-    )
-    import json
-
-    recurring_rule = {
-        "id": "REC-001",
-        "type": "expense",
-        "amount": 50000,
-        "category": "rent",
-        "memo": "자동기입 월세 테스트",
-        "tags": ["monthly"],
-    }
-    with open("./data/recurring.jsonl", "w", encoding="utf-8") as f:
-        f.write(json.dumps(recurring_rule, ensure_ascii=False) + "\n")
-
-    print(
         "\n[성공 케이스] 조회 명령어(list)를 실행하여 자동 기입 시스템(RECURRING_TRIGGERS)을 트리거합니다."
     )
     run_cmd(["list", "--limit", "5"])
@@ -429,14 +413,6 @@ def main():
         "\n[복구 검증] 방금 추가했던 9999원짜리 '복구테스트용' 내역이 사라졌는지 확인합니다 (롤백 성공)."
     )
     run_cmd(["list", "--limit", "5"])
-
-    # 테스트 후 생성된 찌꺼기 폴더 정리
-    import shutil
-
-    if os.path.exists("./test_backup_dir"):
-        shutil.rmtree("./test_backup_dir")
-    if os.path.exists("./data/recurring.jsonl"):
-        os.remove("./data/recurring.jsonl")
 
     print("\n🎉 시스템 예외 시나리오 무결성 테스트가 모두 완료되었습니다!")
 

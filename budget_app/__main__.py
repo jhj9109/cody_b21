@@ -2,6 +2,8 @@ import argparse
 import sys
 import heapq
 
+from budget_app.utils import print_success, print_info, format_tx, parse_strs
+
 # 내부 모듈 임포트
 from .storage import init_storage, set_data_dir, backup_data, restore_data
 from .services import (
@@ -9,8 +11,8 @@ from .services import (
     CategoryService,
     BudgetService,
     SummaryService,
-    error_handler,
 )
+from .decorator import error_handler, time_logger
 from .io_service import IOService
 from .models import (
     ExportCommandData,
@@ -26,41 +28,6 @@ from .validators import (
 )  # 공통 검증기 임포트
 
 from .models import BackupCommandData, RestoreCommandData
-
-
-# ==========================================
-# 1. 공통 헬퍼 함수
-# ==========================================
-def print_success(msg: str) -> None:
-    print(f"\033[92m[성공]\033[0m {msg}")
-
-
-def print_info(msg: str) -> None:
-    print(f"\033[94m[안내]\033[0m {msg}")
-
-
-def format_tx(tx: Transaction) -> str:
-    """거래 내역을 보기 좋게 문자열로 포맷팅합니다."""
-
-    return " | ".join(
-        [
-            f"{tx.id:<10}",
-            f"{tx.date:<10}",
-            f"{tx.type:<7}",
-            f"{tx.category:<10}",
-            f"{tx.amount:>8}원",
-            f"{(tx.memo or '')}< {', '.join(tx.tags or [])} >",
-        ]
-    )
-
-
-def parse_strs(strs: str, filter_empty=True) -> list[str]:
-    result = []
-    for s in strs.split(","):
-        cleaned = s.strip()
-        if not filter_empty or cleaned:
-            result.append(cleaned)
-    return result
 
 
 # ==========================================
