@@ -362,7 +362,12 @@ def main():
 
     if args.data_dir:
         set_data_dir(args.data_dir)
-    init_storage(args.command)
+    try:
+        init_storage(args.command)
+    except Exception as e:
+        print(f"\n[오류] init_storage 과정에서 문제가 발생했습니다.")
+        print(f"[원인] {e}")
+        sys.exit(1)
 
     if args.command == "add":
         handle_add(args)
