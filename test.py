@@ -167,9 +167,9 @@ def main():
     wait_for_user("5. 거래 내역 추가 및 무결성(Transaction) 테스트", args.step)
     print("[성공 케이스] 정상 수입/지출 등록")
     run_cmd(["add"], input_data="2024-01-10\nincome\nsalary\n3000000\n월급\nwork\n")
-    run_cmd(["add"], input_data="2024-01-15\nexpense\nfood\n15000\n점심\nmeal\n")
+    run_cmd(["add"], input_data="2024-01-15\nexpense\nfood\n15000\n점심\nmeal,launch\n")
     run_cmd(["add"], input_data="2024-02-03\nincome\nsalary\n3300000\n월급\nmeal\n")
-    run_cmd(["add"], input_data="2024-02-05\nexpense\nfood\n15500\n저녁\nmeal\n")
+    run_cmd(["add"], input_data="2024-02-05\nexpense\nfood\n15500\n저녁\nmeal,dinner\n")
 
     print("\n[성공 케이스] 항목 추가 시 메모를 입력하지 않고 엔터만 쳤을 때 (빈 메모)")
     run_cmd(["add"], input_data="2024-01-16\nexpense\nfood\n7000\n\nstarbucks\n")
